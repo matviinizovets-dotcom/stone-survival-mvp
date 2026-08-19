@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Stone Age Survival MVP</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background-color: #111; user-select: none; -webkit-user-select: none; }
+        #ui {
+            position: absolute; top: 20px; left: 20px; color: white;
+            background: rgba(0, 0, 0, 0.75); padding: 15px;
+            border-radius: 10px; pointer-events: none;
+            border: 1px solid #555; width: 220px; z-index: 10;
+        }
+        #ui h2 { margin: 0 0 8px 0; font-size: 18px; color: #f5deb3; }
+        #ui p { margin: 4px 0; font-size: 14px; }
+        #multiplayer { margin-top: 10px; padding-top: 8px; border-top: 1px solid #555; }
+        #multiplayer.connected { color: #76ff03; }
+        #multiplayer.disconnected { color: #ff5252; }
+        #inventory { margin-top: 10px; padding-top: 8px; border-top: 1px solid #555; font-weight: bold;}
+        #crafting { margin-top: 10px; padding-top: 8px; border-top: 1px solid #555; }
+        #crafting h3 { margin: 0 0 4px 0; font-size: 14px; color: #deb887; }
+        
+        #crosshair {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px; height: 20px;
+            pointer-events: none; z-index: 10;
+        }
+        #crosshair::before, #crosshair::after {
+            content: ''; position: absolute; background-color: white; opacity: 0.8;
+        }
+        #crosshair::before { left: 0; top: 9px; width: 20px; height: 2px; }
+        #crosshair::after { left: 9px; top: 0; width: 2px; height: 20px; }
+
+        #instruction {
+            position: absolute; bottom: 30px; width: 100%;
+            text-align: center; color: white; text-shadow: 0 0 5px black;
+            pointer-events: none; font-size: 16px; padding: 0 10px; box-sizing: border-box;
+            z-index: 10;
+        }
+
+        #mobile-controls {
+            display: flex;
+            position: absolute; bottom: 20px; width: 100%;
+            pointer-events: none; box-sizing: border-box;
+            padding: 0 20px; justify-content: space-between; align-items: flex-end;
+            z-index: 10;
+        }
+        .joy-pad {
+            display: grid; grid-template-columns: 60px 60px 60px; grid-template-rows: 60px 60px;
+            gap: 10px; pointer-events: auto;
+        }
+        .action-pad {
+            display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
+        }
+        .m-btn {
+            background: rgba(255, 255, 255, 0.25); border: 2px solid rgba(255, 255, 255, 0.5);
+            color: white; font-size: 18px; font-weight: bold; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            touch-action: manipulation; outline: none; cursor: pointer;
+        }
+        .m-btn:active { background: rgba(255, 255, 255, 0.5); }
+        #btn-up { grid-column: 2; grid-row: 1; }
+        #btn-left { grid-column: 1; grid-row: 2; }
+        #btn-down { grid-column: 2; grid-row: 2; }
+        #btn-right { grid-column: 3; grid-row: 2; }
+        
+        #btn-gather { width: 80px; height: 50px; background: rgba(76, 175, 80, 0.4); border-color: #4caf50; }
+        #btn-craft { width: 80px; height: 50px; background: rgba(255, 152, 0, 0.4); border-color: #ff9800; }
+        #btn-jump { width: 80px; height: 50px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h2>Stone Age: Survival</h2>
+        <p>Status: Exploring</p>
+        <div id="multiplayer" class="disconnected">
+            Multiplayer: <span id="mp-status">Connecting...</span>
+        </div>
+        <div id="inventory">
+            Wood: <span id="wood-count">0</span> 🪵<br>
+            Stone: <span id="stone-count">0</span> 🪨
+        </div>
+        <div id="crafting">
+            <h3>Crafting (Tap Craft)</h3>
+            <p>Campfire (5W, 3S)</p>
+            <p>Status: <span id="campfire-status">Locked</span></p>
+        </div>
+    </div>
+    
+    <div id="crosshair"></div>
+    <div id="instruction">Click to play. WASD move, Space jump, F gather, E craft. Use on-screen buttons on mobile.</div>
+
+    <div id="mobile-controls">
+        <div class="joy-pad">
+            <button class="m-btn" id="btn-up">▲</button>
+            <button class="m-btn" id="btn-left">◀</button>
+            <button class="m-btn" id="btn-down">▼</button>
+            <button class="m-btn" id="btn-right">▶</button>
+        </div>
+        <div class="action-pad">
+            <button class="m-btn" id="btn-jump">Jump</button>
+            <button class="m-btn" id="btn-gather">Gather</button>
+            <button class="m-btn" id="btn-craft">Craft</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        let scene, camera, renderer;
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false, canJump = false;
+        let velocity = new THREE.Vector3();
+        let prevTime = performance.now();
+
+        let raycaster;
+        let objectsToInteract = [];
+        let inventory = { wood: 0, stone: 0, campfire: 0 };
+        let isGameRunning = true;
+
+        let socket = null;
+        let myPlayerId = null;
+        let remotePlayers = {};
+        let lastNetworkUpdate = 0;
+        const NETWORK_INTERVAL = 50;
+        const EYE_HEIGHT = 1.8;
+        const MOUSE_SENSITIVITY = 0.002;
+        const TOUCH_LOOK_SENSITIVITY = 0.003;
+        let isPointerLocked = false;
+        let touchLookId = null;
+        let lastLookX = 0;
+        let lastLookY = 0;
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.FogExp2(0x87ceeb, 0.01);
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 10);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            raycaster = new THREE.Raycaster();
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffaed, 0.9);
+            sunLight.position.set(200, 300, 100);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 800;
+            sunLight.shadow.camera.left = -300;
+            sunLight.shadow.camera.right = 300;
+            sunLight.shadow.camera.top = 300;
+            sunLight.shadow.camera.bottom = -300;
+            scene.add(sunLight);
+
+            const worldSize = 600;
+            const floorGeometry = new THREE.PlaneGeometry(worldSize, worldSize, 128, 128);
+            floorGeometry.rotateX(-Math.PI / 2);
+
+            const pos = floorGeometry.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const vx = pos.getX(i);
+                const vz = pos.getZ(i);
+                const distFromCenter = Math.sqrt(vx * vx + vz * vz);
+                if (distFromCenter > 20) {
+                    const y = Math.sin(vx * 0.02) * Math.cos(vz * 0.02) * 6 + Math.sin(vx * 0.005) * 15;
+                    pos.setY(i, y);
+                }
+            }
+            floorGeometry.computeVertexNormals();
+
+            const floorMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x3b5323, 
+                roughness: 0.9,
+                flatShading: true 
+            });
+            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.receiveShadow = true;
+            scene.add(floor);
+
+            for (let i = 0; i < 250; i++) {
+                const x = (Math.random() - 0.5) * (worldSize - 60);
+                const z = (Math.random() - 0.5) * (worldSize - 60);
+                
+                if (Math.abs(x) > 15 || Math.abs(z) > 15) {
+                    const y = getTerrainHeight(x, z);
+                    if (Math.random() > 0.3) {
+                        createTree(x, y, z);
+                    } else {
+                        createRock(x, y, z);
+                    }
+                }
+            }
+
+            setupInputListeners();
+            connectMultiplayer();
+        }
+
+        function colorFromId(id) {
+            let hash = 0;
+            for (let i = 0; i < id.length; i++) {
+                hash = id.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            return hash & 0xffffff;
+        }
+
+        function setMultiplayerStatus(text, connected) {
+            document.getElementById('mp-status').innerText = text;
+            const panel = document.getElementById('multiplayer');
+            panel.classList.toggle('connected', connected);
+            panel.classList.toggle('disconnected', !connected);
+        }
+
+        function createRemotePlayer(id) {
+            const group = new THREE.Group();
+            const color = colorFromId(id);
+
+            const bodyGeometry = new THREE.BoxGeometry(0.8, 1.2, 0.5);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.6;
+            body.castShadow = true;
+            group.add(body);
+
+            const headGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.y = 1.45;
+            head.castShadow = true;
+            group.add(head);
+
+            scene.add(group);
+            remotePlayers[id] = {
+                group,
+                targetPosition: new THREE.Vector3(),
+                targetRotationY: 0
+            };
+        }
+
+        function updateRemotePlayer(id, position, rotation) {
+            if (!remotePlayers[id]) {
+                createRemotePlayer(id);
+            }
+
+            const remote = remotePlayers[id];
+            remote.targetPosition.set(position.x, position.y - EYE_HEIGHT, position.z);
+            remote.targetRotationY = rotation.y;
+        }
+
+        function removeRemotePlayer(id) {
+            const remote = remotePlayers[id];
+            if (!remote) return;
+
+            scene.remove(remote.group);
+            delete remotePlayers[id];
+            updatePlayerCountLabel();
+        }
+
+        function updatePlayerCountLabel() {
+            const count = Object.keys(remotePlayers).length + (myPlayerId ? 1 : 0);
+            setMultiplayerStatus(`${count} player${count === 1 ? '' : 's'} online`, true);
+        }
+
+        function handleServerMessage(msg) {
+            switch (msg.type) {
+                case 'welcome':
+                    myPlayerId = msg.id;
+                    msg.players.forEach((player) => {
+                        updateRemotePlayer(player.id, player.position, player.rotation);
+                    });
+                    updatePlayerCountLabel();
+                    break;
+                case 'playerJoined':
+                    if (msg.id !== myPlayerId) {
+                        updateRemotePlayer(msg.id, msg.position, msg.rotation);
+                        updatePlayerCountLabel();
+                    }
+                    break;
+                case 'playerUpdate':
+                    if (msg.id !== myPlayerId) {
+                        updateRemotePlayer(msg.id, msg.position, msg.rotation);
+                    }
+                    break;
+                case 'playerLeft':
+                    removeRemotePlayer(msg.id);
+                    break;
+            }
+        }
+
+        function connectMultiplayer() {
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}`;
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                setMultiplayerStatus('Connected', true);
+            };
+
+            socket.onmessage = (event) => {
+                handleServerMessage(JSON.parse(event.data));
+            };
+
+            socket.onclose = () => {
+                myPlayerId = null;
+                Object.keys(remotePlayers).forEach(removeRemotePlayer);
+                setMultiplayerStatus('Disconnected — run npm start', false);
+            };
+
+            socket.onerror = () => {
+                setMultiplayerStatus('Server offline — run npm start', false);
+            };
+        }
+
+        function sendPlayerUpdate() {
+            if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+            socket.send(JSON.stringify({
+                type: 'update',
+                position: {
+                    x: camera.position.x,
+                    y: camera.position.y,
+                    z: camera.position.z
+                },
+                rotation: {
+                    x: camera.rotation.x,
+                    y: camera.rotation.y,
+                    z: camera.rotation.z
+                }
+            }));
+        }
+
+        function getTerrainHeight(x, z) {
+            return Math.sin(x * 0.02) * Math.cos(z * 0.02) * 6 + Math.sin(x * 0.005) * 15;
+        }
+
+        function createTree(x, y, z) {
+            const treeGroup = new THREE.Group();
+            
+            const trunkHeight = 3 + Math.random() * 2;
+            const trunkGeometry = new THREE.BoxGeometry(1, trunkHeight, 1);
+            const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x5c4033 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.y = trunkHeight / 2;
+            trunk.castShadow = true;
+            trunk.receiveShadow = true;
+            treeGroup.add(trunk);
+
+            const leavesGeometry = new THREE.ConeGeometry(2.5, 4, 6);
+            const leavesMaterial = new THREE.MeshStandardMaterial({ color: 0x2e4d1e, flatShading: true });
+            const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+            leaves.position.y = trunkHeight + 1.5;
+            leaves.castShadow = true;
+            treeGroup.add(leaves);
+
+            treeGroup.position.set(x, y, z);
+            scene.add(treeGroup);
+            
+            treeGroup.traverse((child) => {
+                if (child.isMesh) {
+                    child.userData = { type: 'wood', root: treeGroup };
+                    objectsToInteract.push(child);
+                }
+            });
+        }
+
+        function createRock(x, y, z) {
+            const rockGeometry = new THREE.DodecahedronGeometry(1 + Math.random() * 0.8, 1);
+            const rockMaterial = new THREE.MeshStandardMaterial({ color: 0x7a7a7a, roughness: 0.8, flatShading: true });
+            const rock = new THREE.Mesh(rockGeometry, rockMaterial);
+            rock.position.set(x, y + 0.5, z);
+            rock.castShadow = true;
+            rock.receiveShadow = true;
+            scene.add(rock);
+
+            rock.userData = { type: 'stone', root: rock };
+            objectsToInteract.push(rock);
+        }
+
+        function craftCampfire() {
+            if (inventory.wood >= 5 && inventory.stone >= 3) {
+                inventory.wood -= 5;
+                inventory.stone -= 3;
+                inventory.campfire += 1;
+
+                document.getElementById('wood-count').innerText = inventory.wood;
+                document.getElementById('stone-count').innerText = inventory.stone;
+                document.getElementById('campfire-status').innerText = `Crafted! (${inventory.campfire})`;
+                document.getElementById('campfire-status').style.color = '#76ff03';
+
+                const p = camera.position;
+                const dir = new THREE.Vector3();
+                camera.getWorldDirection(dir);
+                const spawnPos = p.clone().add(dir.multiplyScalar(3));
+                spawnPos.y = getTerrainHeight(spawnPos.x, spawnPos.z);
+
+                const fireGroup = new THREE.Group();
+                const logGeo = new THREE.CylinderGeometry(0.2, 0.2, 1.5, 6);
+                logGeo.rotateX(Math.PI / 2);
+                const logMat = new THREE.MeshStandardMaterial({ color: 0x3e2723 });
+                
+                for(let i=0; i<3; i++) {
+                    const log = new THREE.Mesh(logGeo, logMat);
+                    log.rotation.y = (i * Math.PI) / 3;
+                    log.position.y = 0.1;
+                    fireGroup.add(log);
+                }
+
+                const fireGeo = new THREE.SphereGeometry(0.4, 8, 8);
+                const fireMat = new THREE.MeshBasicMaterial({ color: 0xff5722 });
+                const fire = new THREE.Mesh(fireGeo, fireMat);
+                fire.position.y = 0.3;
+                fireGroup.add(fire);
+
+                fireGroup.position.set(spawnPos.x, spawnPos.y, spawnPos.z);
+                scene.add(fireGroup);
+            }
+        }
+
+        function tryGather() {
+            if (!isGameRunning) return;
+
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects(objectsToInteract, false);
+
+            if (intersects.length > 0) {
+                const hitObject = intersects[0].object;
+                const distance = intersects[0].distance;
+
+                if (distance < 9 && hitObject.userData && hitObject.userData.root) {
+                    const rootObj = hitObject.userData.root;
+                    const resType = hitObject.userData.type;
+
+                    scene.remove(rootObj);
+                    
+                    objectsToInteract = objectsToInteract.filter(obj => {
+                        let current = obj;
+                        while(current) {
+                            if (current === rootObj) return false;
+                            current = current.parent;
+                        }
+                        return true;
+                    });
+
+                    if (resType === 'wood') {
+                        inventory.wood += 1;
+                        document.getElementById('wood-count').innerText = inventory.wood;
+                    } else {
+                        inventory.stone += 1;
+                        document.getElementById('stone-count').innerText = inventory.stone;
+                    }
+                }
+            }
+        }
+
+        function isUiTarget(element) {
+            return element && (element.closest('#mobile-controls') || element.closest('#ui'));
+        }
+
+        function applyLook(deltaX, deltaY, sensitivity) {
+            camera.rotation.y -= deltaX * sensitivity;
+            camera.rotation.x -= deltaY * sensitivity;
+            camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+        }
+
+        function setupInputListeners() {
+            window.addEventListener('keydown', (e) => {
+                if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space'].includes(e.code)) {
+                    e.preventDefault();
+                }
+
+                switch (e.code) {
+                    case 'KeyW': moveForward = true; break;
+                    case 'KeyA': moveLeft = true; break;
+                    case 'KeyS': moveBackward = true; break;
+                    case 'KeyD': moveRight = true; break;
+                    case 'Space':
+                        if (canJump === true) { velocity.y += 10; canJump = false; }
+                        break;
+                    case 'KeyE':
+                        craftCampfire();
+                        break;
+                    case 'KeyF':
+                        tryGather();
+                        break;
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                switch (e.code) {
+                    case 'KeyW': moveForward = false; break;
+                    case 'KeyA': moveLeft = false; break;
+                    case 'KeyS': moveBackward = false; break;
+                    case 'KeyD': moveRight = false; break;
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            const bindButton = (id, onDown, onUp) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                
+                el.addEventListener('touchstart', (e) => { e.preventDefault(); onDown(); });
+                el.addEventListener('touchend', (e) => { e.preventDefault(); if (onUp) onUp(); });
+                
+                el.addEventListener('mousedown', (e) => { e.preventDefault(); onDown(); });
+                el.addEventListener('mouseup', (e) => { e.preventDefault(); if (onUp) onUp(); });
+                el.addEventListener('mouseleave', (e) => { if (onUp) onUp(); });
+            };
+
+            bindButton('btn-up', () => moveForward = true, () => moveForward = false);
+            bindButton('btn-down', () => moveBackward = true, () => moveBackward = false);
+            bindButton('btn-left', () => moveLeft = true, () => moveLeft = false);
+            bindButton('btn-right', () => moveRight = true, () => moveRight = false);
+            bindButton('btn-jump', () => { if (canJump) { velocity.y += 10; canJump = false; } });
+            bindButton('btn-gather', () => tryGather());
+            bindButton('btn-craft', () => craftCampfire());
+
+            renderer.domElement.addEventListener('click', () => {
+                if (!document.pointerLockElement) {
+                    renderer.domElement.requestPointerLock();
+                }
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                isPointerLocked = document.pointerLockElement === renderer.domElement;
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isPointerLocked) return;
+                applyLook(e.movementX, e.movementY, MOUSE_SENSITIVITY);
+            });
+
+            window.addEventListener('touchstart', (e) => {
+                if (isUiTarget(e.target)) return;
+                if (e.touches.length !== 1) return;
+
+                touchLookId = e.touches[0].identifier;
+                lastLookX = e.touches[0].clientX;
+                lastLookY = e.touches[0].clientY;
+            }, { passive: true });
+
+            window.addEventListener('touchmove', (e) => {
+                if (isUiTarget(e.target)) return;
+
+                const touch = Array.from(e.touches).find((t) => t.identifier === touchLookId);
+                if (!touch) return;
+
+                e.preventDefault();
+
+                const deltaX = touch.clientX - lastLookX;
+                const deltaY = touch.clientY - lastLookY;
+                applyLook(deltaX, deltaY, TOUCH_LOOK_SENSITIVITY);
+
+                lastLookX = touch.clientX;
+                lastLookY = touch.clientY;
+            }, { passive: false });
+
+            window.addEventListener('touchend', (e) => {
+                if (!Array.from(e.touches).some((t) => t.identifier === touchLookId)) {
+                    touchLookId = null;
+                }
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (!isGameRunning) return;
+
+            const time = performance.now();
+            const delta = (time - prevTime) / 1000;
+
+            velocity.y -= 9.8 * 4.0 * delta; 
+
+            const moveDir = new THREE.Vector3();
+            camera.getWorldDirection(moveDir);
+            moveDir.y = 0;
+            moveDir.normalize();
+            
+            const sideDir = new THREE.Vector3(-moveDir.z, 0, moveDir.x);
+            
+            let actualMove = new THREE.Vector3();
+            if (moveForward) actualMove.add(moveDir);
+            if (moveBackward) actualMove.sub(moveDir);
+            if (moveRight) actualMove.add(sideDir);
+            if (moveLeft) actualMove.sub(sideDir);
+            actualMove.normalize();
+
+            camera.position.addScaledVector(actualMove, 10.0 * delta);
+            camera.position.y += (velocity.y * delta);
+
+            const groundHeight = getTerrainHeight(camera.position.x, camera.position.z);
+            const playerHeight = 1.8;
+
+            if (camera.position.y < groundHeight + playerHeight) {
+                velocity.y = 0;
+                camera.position.y = groundHeight + playerHeight;
+                canJump = true;
+            }
+
+            Object.values(remotePlayers).forEach((remote) => {
+                remote.group.position.lerp(remote.targetPosition, 0.35);
+                remote.group.rotation.y = remote.targetRotationY;
+            });
+
+            if (time - lastNetworkUpdate >= NETWORK_INTERVAL) {
+                lastNetworkUpdate = time;
+                sendPlayerUpdate();
+            }
+
+            prevTime = time;
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
