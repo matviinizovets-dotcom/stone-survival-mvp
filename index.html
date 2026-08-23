@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Stone Age Survival MVP</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: sans-serif; background-color: #111; user-select: none; -webkit-user-select: none; }
+        #ui {
+            position: absolute; top: 20px; left: 20px; color: white;
+            background: rgba(0, 0, 0, 0.75); padding: 15px;
+            border-radius: 10px; pointer-events: none;
+            border: 1px solid #555; width: 250px; z-index: 10;
+        }
+        #ui h2 { margin: 0 0 8px 0; font-size: 18px; color: #f5deb3; }
+        #ui p { margin: 4px 0; font-size: 13px; }
+        #multiplayer { margin-top: 10px; padding-top: 8px; border-top: 1px solid #555; }
+        #multiplayer.connected { color: #76ff03; }
+        #multiplayer.disconnected { color: #ff5252; }
+        #inventory { margin-top: 10px; padding-top: 8px; border-top: 1px solid #555; font-weight: bold; font-size: 13px; }
+        #crafting { margin-top: 10px; padding-top: 8px; border-top: 1px solid #555; font-size: 12px; }
+        #crafting h3 { margin: 0 0 4px 0; font-size: 14px; color: #deb887; }
+        #status-message { margin-top: 8px; font-size: 12px; color: #ccc; line-height: 1.35; }
+        #action-bar {
+            margin-top: 8px; height: 8px; background: #333; border-radius: 4px; overflow: hidden;
+        }
+        #action-progress {
+            height: 100%; width: 0%; background: linear-gradient(90deg, #8d6e63, #ffb74d);
+            transition: width 0.08s linear;
+        }
+        #action-label { font-size: 11px; color: #aaa; margin-top: 4px; }
+
+        #crosshair {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px; height: 20px;
+            pointer-events: none; z-index: 10;
+        }
+        #crosshair::before, #crosshair::after {
+            content: ''; position: absolute; background-color: white; opacity: 0.8;
+        }
+        #crosshair::before { left: 0; top: 9px; width: 20px; height: 2px; }
+        #crosshair::after { left: 9px; top: 0; width: 2px; height: 20px; }
+
+        #instruction {
+            position: absolute; bottom: 30px; width: 100%;
+            text-align: center; color: white; text-shadow: 0 0 5px black;
+            pointer-events: none; font-size: 14px; padding: 0 10px; box-sizing: border-box;
+            z-index: 10;
+        }
+
+        #mobile-controls {
+            display: flex;
+            position: absolute; bottom: 20px; width: 100%;
+            pointer-events: none; box-sizing: border-box;
+            padding: 0 20px; justify-content: space-between; align-items: flex-end;
+            z-index: 10;
+        }
+        .joy-pad {
+            display: grid; grid-template-columns: 60px 60px 60px; grid-template-rows: 60px 60px;
+            gap: 10px; pointer-events: auto;
+        }
+        .action-pad {
+            display: flex; flex-direction: column; gap: 10px; pointer-events: auto;
+        }
+        .m-btn {
+            background: rgba(255, 255, 255, 0.25); border: 2px solid rgba(255, 255, 255, 0.5);
+            color: white; font-size: 16px; font-weight: bold; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            touch-action: manipulation; outline: none; cursor: pointer;
+        }
+        .m-btn:active { background: rgba(255, 255, 255, 0.5); }
+        #btn-up { grid-column: 2; grid-row: 1; }
+        #btn-left { grid-column: 1; grid-row: 2; }
+        #btn-down { grid-column: 2; grid-row: 2; }
+        #btn-right { grid-column: 3; grid-row: 2; }
+        #btn-gather { width: 80px; height: 50px; background: rgba(76, 175, 80, 0.4); border-color: #4caf50; }
+        #btn-craft { width: 80px; height: 50px; background: rgba(255, 152, 0, 0.4); border-color: #ff9800; }
+        #btn-quench { width: 80px; height: 50px; background: rgba(33, 150, 243, 0.4); border-color: #2196f3; font-size: 14px; }
+        #btn-jump { width: 80px; height: 50px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h2>Stone Age: Survival</h2>
+        <div id="multiplayer" class="disconnected">
+            Multiplayer: <span id="mp-status">Connecting...</span>
+        </div>
+        <div id="inventory">
+            Wood: <span id="wood-count">0</span> 🪵<br>
+            Stone: <span id="stone-count">0</span> 🪨<br>
+            Sticks: <span id="sticks-count">0</span> · Flint: <span id="flint-count">0</span>
+        </div>
+        <div id="crafting">
+            <h3>Crafting</h3>
+            <p>1 — Stone Axe (2 sticks, 2 flint)</p>
+            <p>Axe: <span id="axe-status">Not crafted</span></p>
+            <p>2 — Stone Hammer (3 stone, 1 stick)</p>
+            <p>Hammer: <span id="hammer-status">Not crafted</span></p>
+            <p>E — Campfire (5 wood, 3 stone)</p>
+            <p>Campfire: <span id="campfire-status">Not crafted</span></p>
+        </div>
+        <div id="action-bar"><div id="action-progress"></div></div>
+        <div id="action-label"></div>
+        <p id="status-message">Forage branches and pebbles to begin.</p>
+    </div>
+
+    <div id="crosshair"></div>
+    <div id="instruction">
+        Hold click / Gather to chop or hammer. F picks up. Q quenches heated rock. 1/2 craft tools. E places campfire.
+    </div>
+
+    <div id="mobile-controls">
+        <div class="joy-pad">
+            <button class="m-btn" id="btn-up">▲</button>
+            <button class="m-btn" id="btn-left">◀</button>
+            <button class="m-btn" id="btn-down">▼</button>
+            <button class="m-btn" id="btn-right">▶</button>
+        </div>
+        <div class="action-pad">
+            <button class="m-btn" id="btn-jump">Jump</button>
+            <button class="m-btn" id="btn-gather">Use</button>
+            <button class="m-btn" id="btn-quench">Quench</button>
+            <button class="m-btn" id="btn-craft">Fire</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
