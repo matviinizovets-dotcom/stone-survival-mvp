@@ -1,0 +1,2782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Stone Age Sim — Prototype</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    width: 100%;
+    height: 100%;
+    background: #1a1a1a;
+    touch-action: none;
+  }
+
+  #game-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  #ui-root {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    font-family: sans-serif;
+    color: #eee;
+  }
+
+  #debug-hud {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    font-size: 12px;
+    background: rgba(0,0,0,0.4);
+    padding: 6px 10px;
+    border-radius: 4px;
+    line-height: 1.4;
+  }
+
+  #weight-indicator {
+    position: absolute;
+    top: 54px;
+    left: 8px;
+    font-size: 11px;
+    background: rgba(0,0,0,0.4);
+    padding: 4px 8px;
+    border-radius: 4px;
+    line-height: 1.3;
+    font-family: monospace;
+    color: #bde8a0;
+    letter-spacing: 0.03em;
+  }
+  #weight-indicator.heavy { color: #f0b060; }
+  #weight-indicator.overloaded { color: #f08080; }
+
+  #inventory-bar {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    display: flex;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.42);
+    padding: 6px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    pointer-events: auto;
+  }
+
+  .inv-slot {
+    position: relative;
+    width: 54px;
+    height: 54px;
+    background: rgba(0, 0, 0, 0.38);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease-out, border-color 0.2s ease-out,
+                box-shadow 0.2s ease-out, transform 0.1s ease-out;
+    pointer-events: auto;
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .inv-slot:active { transform: scale(0.94); }
+
+  .inv-slot.flash {
+    background: rgba(255, 220, 100, 0.45);
+    border-color: rgba(255, 220, 100, 0.85);
+  }
+
+  .inv-slot.selected {
+    background: rgba(255, 220, 100, 0.18);
+    border-color: rgba(255, 220, 100, 0.95);
+    box-shadow: 0 0 10px rgba(255, 220, 100, 0.55);
+  }
+
+  .inv-slot .inv-label {
+    position: absolute;
+    top: 2px;
+    left: 4px;
+    font-size: 8px;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.55);
+    font-weight: 600;
+  }
+
+  .inv-icon { width: 28px; height: 28px; position: relative; }
+
+  .inv-icon.wood::before {
+    content: ''; position: absolute;
+    left: 2px; right: 2px; top: 9px; bottom: 9px;
+    background: linear-gradient(180deg, #a5713e, #7a4e26);
+    border-radius: 4px; border: 1px solid #4a2e14;
+  }
+  .inv-icon.stick::before {
+    content: ''; position: absolute;
+    left: 1px; right: 1px; top: 13px; height: 3px;
+    background: linear-gradient(90deg, #a56a34, #8b5a2b);
+    border-radius: 2px; transform: rotate(-22deg);
+    box-shadow: inset 0 0 0 1px rgba(74, 46, 20, 0.6);
+  }
+  .inv-icon.stone::before {
+    content: ''; position: absolute;
+    left: 3px; right: 3px; top: 6px; bottom: 6px;
+    background: linear-gradient(180deg, #a8a29a, #6b6660);
+    border-radius: 55% 45% 60% 40%; border: 1px solid #3d3a36;
+  }
+  .inv-icon.stone_hatchet::before {
+    content: ''; position: absolute;
+    left: 3px; right: 8px; top: 4px; bottom: 6px;
+    background: linear-gradient(180deg, #9a928a, #5f5a54);
+    border-radius: 30% 40% 25% 30%; border: 1px solid #3d3a36;
+    transform: rotate(-15deg);
+  }
+  .inv-icon.stone_hatchet::after {
+    content: ''; position: absolute;
+    left: 16px; right: 2px; top: 12px; height: 3px;
+    background: linear-gradient(90deg, #8b5a2b, #a56a34);
+    border-radius: 2px; transform: rotate(35deg);
+  }
+  .inv-icon.broken_stone::before {
+    content: ''; position: absolute;
+    left: 3px; right: 13px; top: 6px; bottom: 6px;
+    background: linear-gradient(180deg, #8a8780, #5c5952);
+    border-radius: 40% 30% 35% 45%; border: 1px solid #3d3a36;
+    transform: rotate(-18deg);
+  }
+  .inv-icon.broken_stone::after {
+    content: ''; position: absolute;
+    left: 14px; right: 3px; top: 9px; bottom: 5px;
+    background: linear-gradient(180deg, #7a766e, #4a4740);
+    border-radius: 30% 40% 45% 25%; border: 1px solid #3d3a36;
+    transform: rotate(22deg);
+  }
+  .inv-icon.bark::before {
+    content: ''; position: absolute;
+    left: 4px; right: 4px; top: 3px; bottom: 3px;
+    background: repeating-linear-gradient(
+      90deg,
+      #8b5a2b 0px, #8b5a2b 2px,
+      #5a3a1a 2px, #5a3a1a 4px,
+      #7a4a22 4px, #7a4a22 6px
+    );
+    border-radius: 3px; border: 1px solid #2e1a08;
+    box-shadow: inset 0 0 4px rgba(0,0,0,0.6);
+  }
+  .inv-icon.empty::before {
+    content: ''; position: absolute;
+    left: 4px; right: 4px; top: 4px; bottom: 4px;
+    border: 1px dashed rgba(255, 255, 255, 0.28); border-radius: 4px;
+  }
+
+  .action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.58);
+    border: 2px solid rgba(255, 255, 255, 0.35);
+    color: #fff;
+    font-family: sans-serif;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+    border-radius: 14px;
+    pointer-events: auto;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, opacity 0.2s,
+                transform 0.1s ease-out, box-shadow 0.15s;
+  }
+  .action-btn:active { transform: scale(0.96); }
+  .action-btn.hidden { opacity: 0; pointer-events: none; transform: scale(0.9); }
+  .action-btn.disabled { opacity: 0.35; pointer-events: none; }
+
+  #pickup-prompt {
+    position: fixed;
+    bottom: 200px;
+    left: 0; right: 0;
+    margin: 0 auto;
+    width: fit-content;
+    min-width: 200px;
+    height: 64px;
+    padding: 0 28px;
+    font-size: 18px;
+    background: rgba(80, 160, 80, 0.45);
+    border-color: rgba(140, 230, 140, 0.9);
+    box-shadow: 0 0 18px rgba(120, 220, 120, 0.35);
+  }
+  #pickup-prompt:active { background: rgba(120, 200, 120, 0.7); }
+
+  #strip-button {
+    position: fixed;
+    bottom: 280px;
+    left: 0; right: 0;
+    margin: 0 auto;
+    width: fit-content;
+    min-width: 220px;
+    height: 64px;
+    padding: 0 28px;
+    font-size: 17px;
+    background: rgba(120, 80, 40, 0.5);
+    border-color: rgba(210, 160, 90, 0.9);
+    box-shadow: 0 0 18px rgba(200, 140, 70, 0.3);
+    overflow: hidden;
+  }
+  #strip-button:active { background: rgba(160, 110, 60, 0.75); }
+  #strip-button .strip-fill {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 0%;
+    background: linear-gradient(90deg,
+      rgba(255, 200, 100, 0.6),
+      rgba(255, 240, 160, 0.75));
+    pointer-events: none;
+    border-radius: 14px 0 0 14px;
+    transition: width 0.05s linear;
+  }
+  #strip-button .strip-label {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #strip-button .tool-badge {
+    font-size: 14px;
+    color: #ffe9a0;
+    letter-spacing: 0.1em;
+  }
+
+  #drop-button {
+    position: fixed;
+    top: 84px; right: 12px;
+    min-width: 96px; height: 46px; padding: 0 16px;
+    font-size: 13px;
+    background: rgba(180, 70, 60, 0.45);
+    border-color: rgba(240, 140, 130, 0.85);
+  }
+  #drop-button:active { background: rgba(220, 100, 90, 0.7); }
+
+  #craft-open-btn {
+    position: fixed;
+    top: 138px; right: 12px;
+    min-width: 96px; height: 46px; padding: 0 16px;
+    font-size: 13px;
+    background: rgba(70, 110, 180, 0.45);
+    border-color: rgba(130, 170, 230, 0.85);
+  }
+  #craft-open-btn:active { background: rgba(110, 150, 220, 0.7); }
+
+  #joystick-zone {
+    position: absolute;
+    bottom: 40px; left: 40px;
+    width: 130px; height: 130px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.06);
+    display: none;
+    pointer-events: auto;
+    touch-action: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  #joystick-zone.sprinting {
+    border-color: rgba(255, 200, 80, 0.8);
+    background: rgba(255, 200, 80, 0.12);
+  }
+  #joystick-stick {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 56px; height: 56px;
+    margin: -28px 0 0 -28px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.35);
+    pointer-events: none;
+    transition: background 0.15s;
+  }
+  #joystick-zone.sprinting #joystick-stick {
+    background: rgba(255, 200, 80, 0.7);
+  }
+
+  #jump-button {
+    position: absolute;
+    bottom: 55px; right: 40px;
+    width: 90px; height: 90px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    font-family: sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  #jump-button:active { background: rgba(255,255,255,0.25); }
+
+  #sprint-indicator {
+    position: absolute;
+    bottom: 180px; left: 40px;
+    width: 130px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: rgba(255, 200, 80, 0.0);
+    pointer-events: none;
+    transition: color 0.15s;
+    text-shadow: 0 0 6px rgba(0,0,0,0.8);
+  }
+  #sprint-indicator.active { color: rgba(255, 200, 80, 0.95); }
+
+  #crafting-screen {
+    position: fixed;
+    inset: 0;
+    display: none;
+    pointer-events: none;
+    font-family: sans-serif;
+    color: #eee;
+    z-index: 10;
+  }
+  #crafting-screen.active { display: block; }
+
+  #crafting-header {
+    position: absolute;
+    top: 12px; left: 16px; right: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: none;
+  }
+
+  #crafting-title {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    color: #e8c880;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.95);
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.5);
+    border-radius: 8px;
+  }
+
+  #crafting-close {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: rgba(0,0,0,0.6);
+    border: 2px solid rgba(255,255,255,0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    pointer-events: auto;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #crafting-close:active { background: rgba(120,40,40,0.8); }
+
+  #crafting-hint {
+    position: absolute;
+    top: 74px; left: 0; right: 0;
+    text-align: center;
+    font-size: 13px;
+    color: rgba(255,255,255,0.85);
+    text-shadow: 0 2px 6px rgba(0,0,0,0.95);
+    pointer-events: none;
+    padding: 0 20px;
+    line-height: 1.45;
+  }
+
+  #crafting-action-btn {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 240px;
+    height: 64px;
+    padding: 0 28px;
+    font-size: 16px;
+    background: rgba(80, 140, 80, 0.5);
+    border-color: rgba(140, 220, 140, 0.9);
+    box-shadow: 0 0 16px rgba(120, 200, 120, 0.3);
+  }
+  #crafting-action-btn.hidden { display: none; }
+  #crafting-action-btn:active { background: rgba(120, 180, 120, 0.75); }
+
+  #crafting-minigame {
+    position: absolute;
+    bottom: 40px; left: 0; right: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    pointer-events: none;
+  }
+  #crafting-minigame.active { display: flex; }
+
+  #minigame-round {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: #e8c880;
+    text-shadow: 0 2px 6px rgba(0,0,0,0.95);
+    padding: 5px 16px;
+    background: rgba(0,0,0,0.6);
+    border-radius: 20px;
+    border: 1px solid rgba(232,200,128,0.55);
+  }
+
+  #minigame-track {
+    position: relative;
+    width: min(80vw, 420px);
+    height: 44px;
+    background: rgba(0,0,0,0.7);
+    border: 2px solid rgba(255,255,255,0.4);
+    border-radius: 10px;
+    overflow: hidden;
+    pointer-events: none;
+    box-shadow: 0 0 20px rgba(0,0,0,0.6);
+  }
+  #minigame-zone {
+    position: absolute;
+    top: 0; bottom: 0;
+    background: linear-gradient(180deg, rgba(120,220,120,0.55), rgba(60,160,60,0.8));
+    border-left: 2px solid rgba(180,255,180,0.95);
+    border-right: 2px solid rgba(180,255,180,0.95);
+  }
+  #minigame-marker {
+    position: absolute;
+    top: -6px; bottom: -6px;
+    width: 6px;
+    background: #fff;
+    box-shadow: 0 0 14px rgba(255,255,255,0.95);
+    border-radius: 2px;
+  }
+
+  #minigame-strike {
+    min-width: 200px;
+    height: 68px;
+    padding: 0 28px;
+    font-size: 20px;
+    background: rgba(200, 80, 60, 0.6);
+    border-color: rgba(255, 150, 130, 0.95);
+    box-shadow: 0 0 18px rgba(220, 100, 80, 0.4);
+  }
+  #minigame-strike:active { background: rgba(240, 120, 100, 0.85); }
+
+  #crafting-result {
+    position: absolute;
+    top: 50%; left: 0; right: 0;
+    transform: translateY(-50%);
+    text-align: center;
+    pointer-events: none;
+    padding: 0 20px;
+  }
+  #crafting-result .res-title {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-shadow: 0 4px 14px rgba(0,0,0,0.95);
+  }
+  #crafting-result .res-sub {
+    font-size: 14px;
+    margin-top: 8px;
+    color: rgba(255,255,255,0.85);
+  }
+  #crafting-result.success .res-title { color: #8ef08e; }
+  #crafting-result.fail .res-title { color: #ff8888; }
+
+  #ui-root.crafting-active #joystick-zone,
+  #ui-root.crafting-active #jump-button,
+  #ui-root.crafting-active #sprint-indicator,
+  #ui-root.crafting-active #inventory-bar,
+  #ui-root.crafting-active #drop-button,
+  #ui-root.crafting-active #craft-open-btn,
+  #ui-root.crafting-active #pickup-prompt,
+  #ui-root.crafting-active #strip-button,
+  #ui-root.crafting-active #weight-indicator,
+  #ui-root.crafting-active #debug-hud {
+    display: none !important;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game-canvas"></canvas>
+
+<div id="ui-root">
+  <div id="debug-hud">WASD move · Space jump · drag to rotate · scroll zoom</div>
+  <div id="weight-indicator">LOAD 0/4 · SPEED 100%</div>
+
+  <div id="inventory-bar">
+    <div class="inv-slot" data-index="0"><div class="inv-icon empty"></div><span class="inv-label"></span></div>
+    <div class="inv-slot" data-index="1"><div class="inv-icon empty"></div><span class="inv-label"></span></div>
+    <div class="inv-slot" data-index="2"><div class="inv-icon empty"></div><span class="inv-label"></span></div>
+    <div class="inv-slot" data-index="3"><div class="inv-icon empty"></div><span class="inv-label"></span></div>
+  </div>
+
+  <div id="drop-button" class="action-btn disabled">DROP</div>
+  <div id="craft-open-btn" class="action-btn">CRAFT</div>
+
+  <div id="strip-button" class="action-btn hidden">
+    <div class="strip-fill" id="strip-fill"></div>
+    <div class="strip-label" id="strip-label">
+      <span id="strip-text">STRIP BARK</span>
+      <span class="tool-badge" id="strip-badge"></span>
+    </div>
+  </div>
+
+  <div id="pickup-prompt" class="action-btn hidden">PICK UP</div>
+
+  <div id="joystick-zone"><div id="joystick-stick"></div></div>
+  <div id="sprint-indicator">SPRINT</div>
+  <div id="jump-button">JUMP</div>
+</div>
+
+<div id="crafting-screen">
+  <div id="crafting-header">
+    <div id="crafting-title">CRAFTING</div>
+    <div id="crafting-close">✕</div>
+  </div>
+  <div id="crafting-hint"></div>
+  <div id="crafting-action-btn" class="action-btn hidden">PLACE STONE</div>
+  <div id="crafting-minigame">
+    <div id="minigame-round">ROUND 1 / 6</div>
+    <div id="minigame-track">
+      <div id="minigame-zone"></div>
+      <div id="minigame-marker"></div>
+    </div>
+    <div id="minigame-strike" class="action-btn">STRIKE</div>
+  </div>
+  <div id="crafting-result" class="hidden"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import * as CANNON from "cannon-es";
+import { FBXLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/FBXLoader.js";
+
+function raggedClothGeometry(radiusTop, radiusBottom, height, radialSegments, raggedAmount) {
+  const geo = new THREE.CylinderGeometry(radiusTop, radiusBottom, height, radialSegments, 1, true);
+  const pos = geo.attributes.position;
+  const bottomY = -height / 2;
+  for (let i = 0; i < pos.count; i++) {
+    if (Math.abs(pos.getY(i) - bottomY) < 1e-4) pos.setY(i, bottomY - Math.random() * raggedAmount);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function makeStoneGeometry(shape) {
+  const geo = new THREE.SphereGeometry(0.19, 12, 10);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    let sx = 1, sy = 1, sz = 1, noiseAmt = 0.15;
+    if (shape === "flat")        { sx = 1.55; sy = 0.55; sz = 1.10; noiseAmt = 0.10; }
+    else if (shape === "jagged") { sx = 1.00; sy = 1.00; sz = 1.00; noiseAmt = 0.42; }
+    else                         { sx = 1.05; sy = 1.05; sz = 1.05; noiseAmt = 0.14; }
+    const n = Math.sin(x*38) * Math.cos(y*36) * Math.sin(z*40);
+    const s = 1 + n * noiseAmt;
+    pos.setXYZ(i, x * sx * s, y * sy * s, z * sz * s);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+  return geo;
+}
+
+const STONE_SHAPES = ["flat", "jagged", "rounded"];
+
+const WEIGHT_SPEED_MULTIPLIER = [1.0, 0.9, 0.8, 0.7, 0.6];
+
+class SceneManager {
+  constructor() {
+    this.scene = new THREE.Scene();
+    this.HORIZON_COLOR = new THREE.Color(0xcfd8d0);
+    this.scene.background = this._makeSkyTexture();
+    this.scene.fog = new THREE.Fog(this.HORIZON_COLOR, 45, 140);
+
+    this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+    this.camera.position.set(0, 4, 8);
+
+    const canvas = document.getElementById("game-canvas");
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    this._setupLighting();
+    this._setupGround();
+    window.addEventListener("resize", () => this._onResize());
+  }
+
+  _makeSkyTexture() {
+    const c = document.createElement("canvas");
+    c.width = 2; c.height = 512;
+    const ctx = c.getContext("2d");
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0.0, "#5e8fbd");
+    grad.addColorStop(0.45, "#8fb2cd");
+    grad.addColorStop(0.75, "#c8d2cb");
+    grad.addColorStop(1.0, "#dde1d3");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 2, 512);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  _setupLighting() {
+    const hemi = new THREE.HemisphereLight(0xbdd4e8, 0x4f5f38, 0.85);
+    this.scene.add(hemi);
+
+    const sun = new THREE.DirectionalLight(0xfff2d6, 2.4);
+    sun.position.set(35, 50, 20);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    const ext = 55;
+    sun.shadow.camera.left = -ext; sun.shadow.camera.right = ext;
+    sun.shadow.camera.top = ext; sun.shadow.camera.bottom = -ext;
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 180;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.03;
+    sun.shadow.radius = 2.5;
+    this.scene.add(sun);
+    this.scene.add(sun.target);
+    this.sun = sun;
+  }
+
+  _setupGround() {
+    const geo = new THREE.PlaneGeometry(200, 200, 1, 1);
+    const grassCanvas = document.createElement("canvas");
+    grassCanvas.width = grassCanvas.height = 512;
+    const gctx = grassCanvas.getContext("2d");
+    gctx.fillStyle = "#5a7a3a";
+    gctx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 40; i++) {
+      const x = Math.random()*512, y = Math.random()*512, r = 30 + Math.random()*70;
+      const grad = gctx.createRadialGradient(x, y, 0, x, y, r);
+      const dark = Math.random() < 0.5;
+      grad.addColorStop(0, dark ? "rgba(40, 60, 25, 0.45)" : "rgba(140, 165, 80, 0.35)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      gctx.fillStyle = grad;
+      gctx.beginPath(); gctx.arc(x, y, r, 0, Math.PI * 2); gctx.fill();
+    }
+    for (let i = 0; i < 22000; i++) {
+      const x = Math.random()*512, y = Math.random()*512;
+      const len = 2 + Math.random()*6, tilt = (Math.random()-0.5)*3;
+      const shade = Math.random();
+      let col;
+      if (shade < 0.3) col = `rgba(30, 55, 20, ${0.35 + Math.random()*0.4})`;
+      else if (shade < 0.7) col = `rgba(75, 120, 45, ${0.35 + Math.random()*0.4})`;
+      else col = `rgba(140, 175, 80, ${0.25 + Math.random()*0.4})`;
+      gctx.strokeStyle = col;
+      gctx.lineWidth = 0.6 + Math.random()*1.0;
+      gctx.beginPath(); gctx.moveTo(x, y); gctx.lineTo(x + tilt, y - len); gctx.stroke();
+    }
+    const grassTex = new THREE.CanvasTexture(grassCanvas);
+    grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
+    grassTex.colorSpace = THREE.SRGBColorSpace;
+    grassTex.anisotropy = 8;
+    grassTex.repeat.set(25, 25);
+
+    const mat = new THREE.MeshStandardMaterial({ map: grassTex, color: 0xffffff, roughness: 1, metalness: 0 });
+    this.ground = new THREE.Mesh(geo, mat);
+    this.ground.rotation.x = -Math.PI / 2;
+    this.ground.receiveShadow = true;
+    this.scene.add(this.ground);
+
+    const rockMat = new THREE.MeshStandardMaterial({ color: 0x777168, roughness: 0.9 });
+    for (let i = 0; i < 12; i++) {
+      const size = 0.4 + Math.random()*1.2;
+      const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(size, 0), rockMat);
+      rock.position.set((Math.random()-0.5)*60, size*0.4, (Math.random()-0.5)*60);
+      rock.rotation.set(Math.random(), Math.random(), Math.random());
+      rock.castShadow = true;
+      rock.receiveShadow = true;
+      this.scene.add(rock);
+    }
+  }
+
+  _onResize() {
+    this.camera.aspect = window.innerWidth / window.innerHeight;
+    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  render() { this.renderer.render(this.scene, this.camera); }
+}
+
+class PhysicsManager {
+  constructor() {
+    this.world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
+    this.world.broadphase = new CANNON.SAPBroadphase(this.world);
+    this.world.allowSleep = true;
+
+    this.groundMaterial = new CANNON.Material("ground");
+    this.characterMaterial = new CANNON.Material("character");
+    this.treeMaterial = new CANNON.Material("tree");
+
+    this.GROUND_GROUP = 2;
+    this.TREE_GROUP = 4;
+
+    this.world.addContactMaterial(new CANNON.ContactMaterial(
+      this.groundMaterial, this.characterMaterial, { friction: 0.4, restitution: 0.0 }
+    ));
+    this.world.addContactMaterial(new CANNON.ContactMaterial(
+      this.treeMaterial, this.characterMaterial, { friction: 0.3, restitution: 0.0 }
+    ));
+
+    const groundBody = new CANNON.Body({
+      mass: 0, shape: new CANNON.Plane(),
+      material: this.groundMaterial,
+      collisionFilterGroup: this.GROUND_GROUP,
+    });
+    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+    this.world.addBody(groundBody);
+    this.groundBody = groundBody;
+  }
+
+  step(dt) { this.world.step(1 / 60, dt, 3); }
+}
+
+class TreeSystem {
+  constructor(scene, physics, opts = {}) {
+    this.scene = scene;
+    this.physics = physics;
+    this.TREE_COUNT    = opts.count ?? 380;
+    this.SPAWN_RADIUS  = opts.spawnRadius ?? 14;
+    this.MIN_SPACING   = opts.minSpacing ?? 3.2;
+    this.EXTENT        = opts.extent ?? 90;
+    this._species = this._defineSpecies();
+    this._placements = [];
+    this._generatePlacements();
+    this._buildInstancedMeshes();
+    this._addPhysicsColliders();
+  }
+
+  getPlacements() { return this._placements; }
+
+  getNearestTree(x, z, maxDist) {
+    let best = null;
+    let bestD2 = maxDist * maxDist;
+    for (const p of this._placements) {
+      const dx = p.x - x, dz = p.z - z;
+      const d2 = dx*dx + dz*dz;
+      if (d2 < bestD2) { bestD2 = d2; best = p; }
+    }
+    return best;
+  }
+
+  markBarkStripped(placement) {
+    if (!placement || placement.barkStripped) return false;
+    placement.barkStripped = true;
+
+    if (placement._trunkMesh) {
+      const white = new THREE.Color(1, 1, 1);
+      placement._trunkMesh.setColorAt(placement._instanceIndex, white);
+      if (placement._trunkMesh.instanceColor) {
+        placement._trunkMesh.instanceColor.needsUpdate = true;
+      }
+    }
+    return true;
+  }
+
+  _defineSpecies() {
+    const coniferTrunk = new THREE.CylinderGeometry(0.14, 0.24, 4.5, 8);
+    coniferTrunk.translate(0, 2.25, 0);
+    const coniferFoliage = new THREE.ConeGeometry(1.8, 4.2, 10);
+    coniferFoliage.translate(0, 5.0, 0);
+
+    const roundTrunk = new THREE.CylinderGeometry(0.16, 0.26, 3.2, 8);
+    roundTrunk.translate(0, 1.6, 0);
+    const roundFoliage = this._noisySphere(2.2, 2, 0.18);
+    roundFoliage.translate(0, 4.7, 0);
+
+    const wideTrunk = new THREE.CylinderGeometry(0.18, 0.30, 2.6, 8);
+    wideTrunk.translate(0, 1.3, 0);
+    const wideFoliage = this._noisySphere(2.7, 2, 0.20);
+    wideFoliage.scale(1.0, 0.8, 1.0);
+    wideFoliage.translate(0, 3.9, 0);
+
+    return [
+      { name: "conifer",
+        trunkGeo: coniferTrunk,
+        trunkMat: new THREE.MeshStandardMaterial({ color: 0xc09c6c, roughness: 1 }),
+        foliageGeo: coniferFoliage,
+        foliageMat: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }),
+        tintHue: [0.28, 0.34], tintSat: [0.45, 0.65], tintLight: [0.18, 0.28],
+        trunkRadius: 0.24, trunkHeight: 4.5, weight: 0.55 },
+      { name: "round",
+        trunkGeo: roundTrunk,
+        trunkMat: new THREE.MeshStandardMaterial({ color: 0xc8a478, roughness: 1 }),
+        foliageGeo: roundFoliage,
+        foliageMat: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }),
+        tintHue: [0.25, 0.31], tintSat: [0.42, 0.62], tintLight: [0.24, 0.34],
+        trunkRadius: 0.26, trunkHeight: 3.2, weight: 0.30 },
+      { name: "wide",
+        trunkGeo: wideTrunk,
+        trunkMat: new THREE.MeshStandardMaterial({ color: 0xceab80, roughness: 1 }),
+        foliageGeo: wideFoliage,
+        foliageMat: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }),
+        tintHue: [0.22, 0.28], tintSat: [0.40, 0.60], tintLight: [0.28, 0.38],
+        trunkRadius: 0.30, trunkHeight: 2.6, weight: 0.15 },
+    ];
+  }
+
+  _noisySphere(radius, subdivisions, amount) {
+    const geo = new THREE.IcosahedronGeometry(radius, subdivisions);
+    const pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const n = Math.sin(x*1.7+0.4)*Math.cos(y*1.9-0.7)*Math.sin(z*2.1+1.2)
+              + 0.5*Math.sin(x*3.4)*Math.cos(z*3.1);
+      const s = 1.0 + amount * n;
+      pos.setXYZ(i, x*s, y*s, z*s);
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  _generatePlacements() {
+    const placements = [];
+    const totalWeight = this._species.reduce((s, sp) => s + sp.weight, 0);
+    const cumulative = [];
+    let acc = 0;
+    for (const sp of this._species) { acc += sp.weight / totalWeight; cumulative.push(acc); }
+    const maxAttempts = this.TREE_COUNT * 40;
+    let attempts = 0;
+    while (placements.length < this.TREE_COUNT && attempts < maxAttempts) {
+      attempts++;
+      const x = (Math.random()-0.5) * 2 * this.EXTENT;
+      const z = (Math.random()-0.5) * 2 * this.EXTENT;
+      const dist = Math.sqrt(x*x + z*z);
+      if (dist < this.SPAWN_RADIUS) continue;
+      const radial = Math.min(1, (dist - this.SPAWN_RADIUS) / 40);
+      const noise = 0.5 + 0.5 * Math.sin(x*0.09 + 1.3) * Math.cos(z*0.11 - 0.4);
+      if (Math.random() > 0.15 + 0.7*radial*(0.6 + 0.4*noise)) continue;
+      let tooClose = false;
+      for (const p of placements) {
+        const dx = p.x - x, dz = p.z - z;
+        if (dx*dx + dz*dz < this.MIN_SPACING * this.MIN_SPACING) { tooClose = true; break; }
+      }
+      if (tooClose) continue;
+      const r = Math.random();
+      let speciesIndex = 0;
+      for (let i = 0; i < cumulative.length; i++) { if (r <= cumulative[i]) { speciesIndex = i; break; } }
+      placements.push({
+        x, z, speciesIndex,
+        scale: 0.75 + Math.random()*0.75,
+        rotY: Math.random() * Math.PI * 2,
+        tint: this._randomTint(this._species[speciesIndex]),
+        barkStripped: false,
+        _trunkMesh: null,
+        _instanceIndex: -1,
+      });
+    }
+    this._placements = placements;
+  }
+
+  _randomTint(species) {
+    const [h0, h1] = species.tintHue;
+    const [s0, s1] = species.tintSat;
+    const [l0, l1] = species.tintLight;
+    const c = new THREE.Color();
+    c.setHSL(h0 + Math.random()*(h1-h0), s0 + Math.random()*(s1-s0), l0 + Math.random()*(l1-l0));
+    return c;
+  }
+
+  _buildInstancedMeshes() {
+    const buckets = this._species.map(() => []);
+    for (const p of this._placements) buckets[p.speciesIndex].push(p);
+    const mat4 = new THREE.Matrix4();
+    const pos = new THREE.Vector3();
+    const quat = new THREE.Quaternion();
+    const scl = new THREE.Vector3();
+    const up = new THREE.Vector3(0, 1, 0);
+
+    const BARK_MULTIPLIER = new THREE.Color(0.42, 0.40, 0.38);
+    const STRIPPED_MULTIPLIER = new THREE.Color(1, 1, 1);
+
+    for (let si = 0; si < this._species.length; si++) {
+      const sp = this._species[si], list = buckets[si];
+      if (list.length === 0) continue;
+
+      const trunkMesh = new THREE.InstancedMesh(sp.trunkGeo, sp.trunkMat, list.length);
+      trunkMesh.castShadow = true;
+      trunkMesh.receiveShadow = true;
+
+      const foliageMesh = new THREE.InstancedMesh(sp.foliageGeo, sp.foliageMat, list.length);
+      foliageMesh.castShadow = true;
+      foliageMesh.receiveShadow = true;
+
+      for (let i = 0; i < list.length; i++) {
+        const p = list[i];
+        pos.set(p.x, 0, p.z);
+        quat.setFromAxisAngle(up, p.rotY);
+        scl.setScalar(p.scale);
+        mat4.compose(pos, quat, scl);
+
+        trunkMesh.setMatrixAt(i, mat4);
+        foliageMesh.setMatrixAt(i, mat4);
+        foliageMesh.setColorAt(i, p.tint);
+
+        trunkMesh.setColorAt(i, p.barkStripped ? STRIPPED_MULTIPLIER : BARK_MULTIPLIER);
+
+        p._trunkMesh = trunkMesh;
+        p._instanceIndex = i;
+      }
+
+      trunkMesh.instanceMatrix.needsUpdate = true;
+      if (trunkMesh.instanceColor) trunkMesh.instanceColor.needsUpdate = true;
+      foliageMesh.instanceMatrix.needsUpdate = true;
+      if (foliageMesh.instanceColor) foliageMesh.instanceColor.needsUpdate = true;
+
+      this.scene.add(trunkMesh, foliageMesh);
+    }
+  }
+
+  _addPhysicsColliders() {
+    for (const p of this._placements) {
+      const sp = this._species[p.speciesIndex];
+      const radius = sp.trunkRadius * p.scale;
+      const height = sp.trunkHeight * p.scale;
+      const body = new CANNON.Body({
+        mass: 0,
+        shape: new CANNON.Cylinder(radius, radius, height, 8),
+        material: this.physics.treeMaterial,
+        collisionFilterGroup: this.physics.TREE_GROUP,
+        collisionFilterMask: 1 | 2,
+        position: new CANNON.Vec3(p.x, height / 2, p.z),
+      });
+      this.physics.world.addBody(body);
+    }
+  }
+}
+
+class WorldItems {
+  constructor(scene) {
+    this.scene = scene;
+
+    this._materials = {
+      stick: new THREE.MeshStandardMaterial({ color: 0x9c6b3a, roughness: 0.85 }),
+      stone: new THREE.MeshStandardMaterial({ color: 0x909088, roughness: 0.95 }),
+      broken_stone: new THREE.MeshStandardMaterial({
+        color: 0x7a766e, roughness: 1.0, metalness: 0.0, flatShading: true,
+      }),
+      bark: new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 1.0 }),
+    };
+
+    const stickGeo = new THREE.CylinderGeometry(0.035, 0.04, 0.75, 6);
+    stickGeo.rotateZ(Math.PI / 2);
+
+    const brokenGeo = new THREE.IcosahedronGeometry(0.10, 0);
+    const bpos = brokenGeo.attributes.position;
+    for (let i = 0; i < bpos.count; i++) {
+      const s = 0.6 + Math.random() * 0.7;
+      bpos.setXYZ(i, bpos.getX(i) * s, bpos.getY(i) * s, bpos.getZ(i) * s);
+    }
+    bpos.needsUpdate = true;
+    brokenGeo.computeVertexNormals();
+
+    const barkGeo = new THREE.BoxGeometry(0.45, 0.03, 0.22);
+    const kpos = barkGeo.attributes.position;
+    for (let i = 0; i < kpos.count; i++) {
+      const x = kpos.getX(i);
+      kpos.setY(i, kpos.getY(i) + Math.sin(x * 8) * 0.02);
+    }
+    kpos.needsUpdate = true;
+    barkGeo.computeVertexNormals();
+
+    this._geometries = {
+      stick: stickGeo,
+      flat: makeStoneGeometry("flat"),
+      jagged: makeStoneGeometry("jagged"),
+      rounded: makeStoneGeometry("rounded"),
+      broken_stone: brokenGeo,
+      bark: barkGeo,
+    };
+
+    this.items = [];
+    this.nearbyItem = null;
+    this.PICKUP_RADIUS = 1.8;
+  }
+
+  spawn(type, x, z, shapeHint = null) {
+    let geo;
+    if (type === "stick") geo = this._geometries.stick;
+    else if (type === "broken_stone") geo = this._geometries.broken_stone;
+    else if (type === "bark") geo = this._geometries.bark;
+    else {
+      const shape = shapeHint || STONE_SHAPES[Math.floor(Math.random() * STONE_SHAPES.length)];
+      geo = this._geometries[shape];
+    }
+    const mesh = new THREE.Mesh(geo, this._materials[type]);
+
+    if (type === "stick") {
+      mesh.rotation.y = Math.random() * Math.PI * 2;
+      mesh.rotation.x = (Math.random() - 0.5) * 0.08;
+      mesh.position.set(x, 0.055, z);
+    } else if (type === "bark") {
+      mesh.rotation.x = -Math.PI / 2 + (Math.random() - 0.5) * 0.4;
+      mesh.rotation.z = Math.random() * Math.PI * 2;
+      mesh.position.set(x, 0.03, z);
+    } else {
+      mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+      mesh.position.set(x, 0.10, z);
+    }
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+    this.items.push({ mesh, type, x, z });
+  }
+
+  update(playerPosition) {
+    this.nearbyItem = null;
+    if (this.items.length === 0) return;
+    const r2 = this.PICKUP_RADIUS * this.PICKUP_RADIUS;
+    let bestD2 = r2;
+    for (const it of this.items) {
+      const dx = it.x - playerPosition.x, dz = it.z - playerPosition.z;
+      const d2 = dx*dx + dz*dz;
+      if (d2 < bestD2) { bestD2 = d2; this.nearbyItem = it; }
+    }
+  }
+
+  consumeNearby() {
+    const it = this.nearbyItem;
+    if (!it) return null;
+    this.scene.remove(it.mesh);
+    const idx = this.items.indexOf(it);
+    if (idx >= 0) this.items.splice(idx, 1);
+    this.nearbyItem = null;
+    return it;
+  }
+
+  scatter(treePlacements, opts = {}) {
+    const STICK_COUNT = opts.stickCount ?? 35;
+    const STONE_COUNT = opts.stoneCount ?? 30;
+    const MIN_RADIUS = opts.minRadius ?? 6;
+    const MAX_RADIUS = opts.maxRadius ?? 55;
+    const TREE_CLEAR = opts.treeClearance ?? 2.0;
+    const ITEM_SPACING = opts.itemSpacing ?? 1.5;
+
+    const minR2 = MIN_RADIUS * MIN_RADIUS;
+    const maxR2 = MAX_RADIUS * MAX_RADIUS;
+    const treeClear2 = TREE_CLEAR * TREE_CLEAR;
+    const itemSpace2 = ITEM_SPACING * ITEM_SPACING;
+
+    const tryPlace = (type) => {
+      for (let attempt = 0; attempt < 60; attempt++) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = MIN_RADIUS + Math.random() * (MAX_RADIUS - MIN_RADIUS);
+        const x = Math.cos(angle) * r, z = Math.sin(angle) * r;
+        if (x*x + z*z < minR2 || x*x + z*z > maxR2) continue;
+        let blocked = false;
+        for (const t of treePlacements) {
+          const dx = t.x - x, dz = t.z - z;
+          if (dx*dx + dz*dz < treeClear2) { blocked = true; break; }
+        }
+        if (blocked) continue;
+        for (const it of this.items) {
+          const dx = it.x - x, dz = it.z - z;
+          if (dx*dx + dz*dz < itemSpace2) { blocked = true; break; }
+        }
+        if (blocked) continue;
+        this.spawn(type, x, z);
+        return;
+      }
+    };
+    for (let i = 0; i < STICK_COUNT; i++) tryPlace("stick");
+    for (let i = 0; i < STONE_COUNT; i++) tryPlace("stone");
+  }
+}
+
+class InputManager {
+  constructor() {
+    this.keys = Object.create(null);
+    this._moveVector = new THREE.Vector2();
+    this._touchMoveVector = new THREE.Vector2();
+    this._touchActive = false;
+    this._jumpQueued = false;
+    this._sprintActive = false;
+    this._lastCenterTapTime = 0;
+    this._centerTapThreshold = 300;
+    this._centerTapMaxDistance = 18;
+
+    const canvas = document.getElementById("game-canvas");
+    canvas.setAttribute("tabindex", "0");
+    canvas.style.outline = "none";
+    canvas.focus();
+    window.addEventListener("click", () => canvas.focus());
+
+    window.addEventListener("keydown", (e) => this._onKey(e, true));
+    window.addEventListener("keyup", (e) => this._onKey(e, false));
+
+    if ("ontouchstart" in window || navigator.maxTouchPoints > 0) {
+      document.getElementById("joystick-zone").style.display = "block";
+      document.getElementById("jump-button").style.display = "flex";
+      this._setupJoystick();
+      this._setupJumpButton();
+    }
+  }
+
+  _onKey(e, isDown) {
+    if (e.code === "Space" && isDown && !this.keys[e.code]) this._jumpQueued = true;
+    if (e.code === "ShiftLeft" && isDown && !this.keys[e.code]) {
+      this._sprintActive = !this._sprintActive;
+      this._updateSprintVisuals();
+    }
+    this.keys[e.code] = isDown;
+  }
+
+  consumeJump() { const q = this._jumpQueued; this._jumpQueued = false; return q; }
+  isSprinting() { return this._sprintActive; }
+
+  _toggleSprint() { this._sprintActive = !this._sprintActive; this._updateSprintVisuals(); }
+
+  _updateSprintVisuals() {
+    const zone = document.getElementById("joystick-zone");
+    const indicator = document.getElementById("sprint-indicator");
+    if (zone) zone.classList.toggle("sprinting", this._sprintActive);
+    if (indicator) indicator.classList.toggle("active", this._sprintActive);
+  }
+
+  _setupJoystick() {
+    const zone = document.getElementById("joystick-zone");
+    const stick = document.getElementById("joystick-stick");
+    const maxRadius = 45;
+    let touchId = null, centerX = 0, centerY = 0;
+    let tapStartTime = 0, tapStartX = 0, tapStartY = 0;
+    let movedFar = false, pendingDoubleTap = false;
+
+    const updateFromTouch = (t) => {
+      let dx = t.clientX - centerX, dy = t.clientY - centerY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist > maxRadius) { dx = (dx/dist)*maxRadius; dy = (dy/dist)*maxRadius; }
+      stick.style.transform = `translate(${dx}px, ${dy}px)`;
+      this._touchMoveVector.set(dx / maxRadius, dy / maxRadius);
+      this._touchActive = true;
+    };
+    const resetStick = () => {
+      stick.style.transform = "translate(0px, 0px)";
+      this._touchMoveVector.set(0, 0);
+      this._touchActive = false;
+      touchId = null; movedFar = false;
+    };
+    const isNearCenter = (cx, cy) => Math.sqrt((cx-centerX)**2 + (cy-centerY)**2) <= this._centerTapMaxDistance;
+
+    zone.addEventListener("touchstart", (e) => {
+      const t = e.changedTouches[0];
+      if (pendingDoubleTap) pendingDoubleTap = false;
+      touchId = t.identifier;
+      const rect = zone.getBoundingClientRect();
+      centerX = rect.left + rect.width / 2;
+      centerY = rect.top + rect.height / 2;
+      tapStartTime = performance.now();
+      tapStartX = t.clientX; tapStartY = t.clientY;
+      movedFar = false;
+      updateFromTouch(t);
+      e.preventDefault();
+    }, { passive: false });
+
+    window.addEventListener("touchmove", (e) => {
+      if (touchId === null) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier === touchId) {
+          if (Math.sqrt((t.clientX - tapStartX)**2 + (t.clientY - tapStartY)**2) > 12) movedFar = true;
+          updateFromTouch(t);
+          e.preventDefault();
+        }
+      }
+    }, { passive: false });
+
+    const onEnd = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== touchId) continue;
+        const now = performance.now();
+        const quick = !movedFar && (now - tapStartTime) < 250;
+        const near = isNearCenter(tapStartX, tapStartY);
+        if (quick && near) {
+          if (now - this._lastCenterTapTime < this._centerTapThreshold) {
+            this._toggleSprint();
+            this._lastCenterTapTime = 0;
+            pendingDoubleTap = false;
+            resetStick();
+          } else {
+            this._lastCenterTapTime = now;
+            pendingDoubleTap = true;
+            setTimeout(() => { if (pendingDoubleTap) { pendingDoubleTap = false; resetStick(); } }, this._centerTapThreshold);
+            touchId = null;
+          }
+        } else resetStick();
+      }
+    };
+    window.addEventListener("touchend", onEnd);
+    window.addEventListener("touchcancel", onEnd);
+  }
+
+  _setupJumpButton() {
+    const btn = document.getElementById("jump-button");
+    btn.addEventListener("touchstart", (e) => { this._jumpQueued = true; e.preventDefault(); }, { passive: false });
+    btn.addEventListener("mousedown", (e) => { this._jumpQueued = true; e.preventDefault(); });
+  }
+
+  getMoveVector() {
+    if (this._touchActive) return this._touchMoveVector;
+    let x = 0, y = 0;
+    if (this.keys["KeyW"] || this.keys["ArrowUp"]) y -= 1;
+    if (this.keys["KeyS"] || this.keys["ArrowDown"]) y += 1;
+    if (this.keys["KeyA"] || this.keys["ArrowLeft"]) x -= 1;
+    if (this.keys["KeyD"] || this.keys["ArrowRight"]) x += 1;
+    this._moveVector.set(x, y);
+    if (this._moveVector.lengthSq() > 0) this._moveVector.normalize();
+    return this._moveVector;
+  }
+}
+
+class Character {
+  constructor(sceneManager, physicsManager) {
+    this.scene = sceneManager.scene;
+    this.physics = physicsManager;
+    this._buildMesh();
+    this._buildPhysicsBody();
+    this.walkSpeed = 22;
+    this.sprintSpeed = 36;
+    this.rotationLerpSpeed = 10;
+    this.jumpSpeed = 5.5;
+    this._targetQuaternion = new THREE.Quaternion();
+    this._walkCycleTime = 0;
+    this._swingAmount = 0;
+    this._isSprinting = false;
+    this._currentYaw = 0;
+    this._airborneSpeedCap = 0;
+    this._speedMultiplier = 1.0;
+  }
+
+  getForwardXZ() { return new THREE.Vector3(Math.sin(this._currentYaw), 0, Math.cos(this._currentYaw)); }
+
+  _buildMesh() {
+    this.mesh = new THREE.Group();
+    this._proceduralParts = [];
+    this._buildProceduralPlaceholder();
+    this._tryLoadFbxModel();
+    this.scene.add(this.mesh);
+  }
+
+  _buildProceduralPlaceholder() {
+    const group = this.mesh;
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x9c7854, roughness: 0.85 });
+    const hideMat = new THREE.MeshStandardMaterial({ color: 0x6f5a3f, roughness: 1 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x352519, roughness: 1 });
+
+    const addPart = (mesh) => {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+      this._proceduralParts.push(mesh);
+      return mesh;
+    };
+
+    const legHeight = 0.85, hipY = legHeight;
+    const legGeo = new THREE.CylinderGeometry(0.115, 0.095, legHeight, 8);
+    legGeo.translate(0, -legHeight/2, 0);
+    this.legs = [-0.13, 0.13].map((x) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(x, hipY, 0);
+      const leg = new THREE.Mesh(legGeo, skinMat);
+      leg.castShadow = true; leg.receiveShadow = true;
+      pivot.add(leg); group.add(pivot);
+      this._proceduralParts.push(pivot);
+      return pivot;
+    });
+
+    const pantsHeight = 0.62;
+    const pantsGeo = raggedClothGeometry(0.145, 0.125, pantsHeight, 8, 0.06);
+    pantsGeo.translate(0, -pantsHeight/2, 0);
+    this.legs.forEach((p) => {
+      const pants = new THREE.Mesh(pantsGeo, hideMat);
+      pants.castShadow = true; pants.receiveShadow = true;
+      p.add(pants);
+      this._proceduralParts.push(pants);
+    });
+
+    const torsoGeo = new THREE.CapsuleGeometry(0.26, 0.34, 4, 8);
+    const torso = addPart(new THREE.Mesh(torsoGeo, skinMat));
+    const torsoCenterY = hipY + 0.26 + 0.34/2;
+    torso.position.y = torsoCenterY;
+
+    const armLength = 0.6;
+    const armGeo = new THREE.CylinderGeometry(0.08, 0.07, armLength, 8);
+    armGeo.translate(0, -armLength/2, 0);
+    const shoulderY = torsoCenterY + 0.3;
+    this.arms = [-1, 1].map((side) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(side*0.32, shoulderY, 0);
+      const arm = new THREE.Mesh(armGeo, skinMat);
+      arm.castShadow = true; arm.receiveShadow = true;
+      arm.rotation.z = side * 0.12;
+      pivot.add(arm); group.add(pivot);
+      this._proceduralParts.push(pivot);
+      return pivot;
+    });
+
+    const headRadius = 0.21;
+    const headY = shoulderY + headRadius + 0.06;
+    const head = addPart(new THREE.Mesh(new THREE.SphereGeometry(headRadius, 14, 14), skinMat));
+    head.position.y = headY;
+    const hair = addPart(new THREE.Mesh(new THREE.SphereGeometry(headRadius*1.15, 12, 12), hairMat));
+    hair.position.set(0, headY + 0.06, -0.04);
+    hair.scale.set(1.05, 0.9, 1.1);
+    const beard = addPart(new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.42, 8), hairMat));
+    beard.rotation.x = Math.PI;
+    beard.position.set(0, headY - 0.2, 0.13);
+
+    const wrap = addPart(new THREE.Mesh(raggedClothGeometry(0.35, 0.32, 0.5, 10, 0.14), hideMat));
+    wrap.position.y = hipY + 0.08;
+
+    const chestPatch = addPart(new THREE.Mesh(
+      new THREE.CylinderGeometry(0.29, 0.29, 0.32, 8, 1, true, 0.5, 3.3), hideMat));
+    chestPatch.position.y = torsoCenterY;
+
+    const strap = addPart(new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.55, 0.06), hideMat));
+    strap.position.set(-0.12, torsoCenterY + 0.15, 0.05);
+    strap.rotation.z = 0.5;
+  }
+
+  _tryLoadFbxModel() {
+    const loader = new FBXLoader();
+    loader.load("./assets/models/Ch36_nonPBR.fbx", (fbx) => {
+      this._proceduralParts.forEach((p) => this.mesh.remove(p));
+      this._proceduralParts = [];
+      fbx.scale.setScalar(0.01);
+      fbx.traverse((c) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
+      this.mesh.add(fbx);
+      this.realModel = fbx;
+      this.mixer = new THREE.AnimationMixer(fbx);
+      this.locomotionActions = {};
+      this._setupPantsRig(fbx);
+      [["walk","Walking.fbx"],["walkBack","Walking_Backwards.fbx"],
+       ["strafeLeft","Left_Strafe_Walking.fbx"],["strafeRight","Right_Strafe_Walking.fbx"]]
+        .forEach(([key, file]) => {
+          loader.load("./assets/animations/" + file, (clip) => {
+            if (clip.animations[0]) this.locomotionActions[key] = this.mixer.clipAction(clip.animations[0]);
+          }, undefined, () => {});
+        });
+    }, undefined, () => {});
+  }
+
+  _buildPhysicsBody() {
+    this.colliderRadius = 0.3;
+    this.colliderHeight = 1.3;
+    const shape = new CANNON.Cylinder(this.colliderRadius, this.colliderRadius, this.colliderHeight, 8);
+    this.body = new CANNON.Body({
+      mass: 70,
+      position: new CANNON.Vec3(0, 2, 0),
+      material: this.physics.characterMaterial,
+      linearDamping: 0.05,
+      fixedRotation: true,
+    });
+    this.body.addShape(shape);
+    this.body.allowSleep = false;
+    this.physics.world.addBody(this.body);
+  }
+
+  _findBone(root, suffix) {
+    const target = suffix.toLowerCase();
+    let found = null;
+    root.traverse((o) => {
+      if (found || !o.isBone) return;
+      if (o.name.toLowerCase().endsWith(target)) found = o;
+    });
+    return found;
+  }
+
+  _setupPantsRig(fbx) {
+    const lUL = this._findBone(fbx, "leftupleg");
+    const lL  = this._findBone(fbx, "leftleg");
+    const lF  = this._findBone(fbx, "leftfoot");
+    const rUL = this._findBone(fbx, "rightupleg");
+    const rL  = this._findBone(fbx, "rightleg");
+    const rF  = this._findBone(fbx, "rightfoot");
+    const hips = this._findBone(fbx, "hips");
+    if (!lUL || !lL || !rUL || !rL) return;
+    const hideMat = new THREE.MeshStandardMaterial({ color: 0x6f5a3f, roughness: 1 });
+    const mk = (rt, rb) => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, 1, 10), hideMat);
+      m.castShadow = true; m.receiveShadow = true;
+      this.scene.add(m); return m;
+    };
+    const defs = [
+      { a: lUL, b: lL, rt: 0.155, rb: 0.135 },
+      { a: rUL, b: rL, rt: 0.155, rb: 0.135 },
+    ];
+    if (lF) defs.push({ a: lL, b: lF, rt: 0.135, rb: 0.115 });
+    if (rF) defs.push({ a: rL, b: rF, rt: 0.135, rb: 0.115 });
+    this.pantsSegments = defs.map(({a,b,rt,rb}) => ({ mesh: mk(rt,rb), boneA: a, boneB: b }));
+    if (hips) {
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.22, 12), hideMat);
+      band.castShadow = true; band.receiveShadow = true;
+      this.scene.add(band);
+      this.pantsSegments.push({ mesh: band, boneA: hips, boneB: null });
+    }
+  }
+
+  _updatePantsRig() {
+    if (!this.pantsSegments) return;
+    const up = new THREE.Vector3(0, 1, 0);
+    this.pantsSegments.forEach(({ mesh, boneA, boneB }) => {
+      const pA = new THREE.Vector3(); boneA.getWorldPosition(pA);
+      if (boneB) {
+        const pB = new THREE.Vector3(); boneB.getWorldPosition(pB);
+        const dir = new THREE.Vector3().subVectors(pB, pA);
+        const len = dir.length() || 0.0001;
+        dir.normalize();
+        mesh.position.copy(pA).addScaledVector(dir, len/2);
+        mesh.quaternion.setFromUnitVectors(up, dir);
+        mesh.scale.set(1, len, 1);
+      } else {
+        mesh.position.copy(pA);
+        boneA.getWorldQuaternion(mesh.quaternion);
+      }
+    });
+  }
+
+  _isGrounded() {
+    const h = this.colliderHeight / 2;
+    return this.body.position.y <= h + 0.05 && this.body.velocity.y <= 0.01;
+  }
+
+  jump() {
+    if (!this._isGrounded()) return;
+    this._airborneSpeedCap = Math.sqrt(this.body.velocity.x**2 + this.body.velocity.z**2);
+    if (this._airborneSpeedCap < 0.5) {
+      this._airborneSpeedCap = this.walkSpeed * this._speedMultiplier;
+    }
+    this.body.velocity.y = this.jumpSpeed;
+  }
+
+  update(moveVector, camera, dt, sprinting = false, speedMultiplier = 1.0) {
+    this._isSprinting = sprinting;
+
+    const ease = 1 - Math.exp(-12 * dt);
+    this._speedMultiplier += (speedMultiplier - this._speedMultiplier) * ease;
+
+    const hasInput = moveVector.lengthSq() > 0.0001;
+    const baseSpeed = sprinting ? this.sprintSpeed : this.walkSpeed;
+    const speed = baseSpeed * this._speedMultiplier;
+
+    const grounded = this._isGrounded();
+
+    const camForward = new THREE.Vector3();
+    camera.getWorldDirection(camForward);
+    camForward.y = 0; camForward.normalize();
+    const camRight = new THREE.Vector3().crossVectors(camForward, THREE.Object3D.DEFAULT_UP);
+
+    if (hasInput) {
+      const moveDir = new THREE.Vector3();
+      moveDir.addScaledVector(camForward, -moveVector.y);
+      moveDir.addScaledVector(camRight, moveVector.x);
+      moveDir.normalize();
+      const tvx = moveDir.x * speed, tvz = moveDir.z * speed;
+      if (grounded) {
+        this.body.velocity.x = tvx; this.body.velocity.z = tvz;
+      } else {
+        const lerp = 1 - Math.exp(-this.rotationLerpSpeed * 0.35 * dt);
+        let nvx = this.body.velocity.x + (tvx - this.body.velocity.x) * lerp;
+        let nvz = this.body.velocity.z + (tvz - this.body.velocity.z) * lerp;
+        const ns = Math.sqrt(nvx*nvx + nvz*nvz);
+        if (ns > this._airborneSpeedCap && ns > 0.0001) {
+          const s = this._airborneSpeedCap / ns;
+          nvx *= s; nvz *= s;
+        }
+        this.body.velocity.x = nvx; this.body.velocity.z = nvz;
+      }
+      const ty = Math.atan2(moveDir.x, moveDir.z);
+      let d = ty - this._currentYaw;
+      d = ((d + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI;
+      const tl = 1 - Math.exp(-this.rotationLerpSpeed * dt);
+      this._currentYaw += d * tl;
+    } else {
+      const dec = 1 - Math.exp(-12 * dt);
+      this.body.velocity.x *= 1 - dec;
+      this.body.velocity.z *= 1 - dec;
+      if (!grounded) {
+        const hs = Math.sqrt(this.body.velocity.x**2 + this.body.velocity.z**2);
+        if (hs > this._airborneSpeedCap && hs > 0.0001) {
+          const s = this._airborneSpeedCap / hs;
+          this.body.velocity.x *= s; this.body.velocity.z *= s;
+        }
+      }
+      const cy = Math.atan2(camForward.x, camForward.z);
+      let d = cy - this._currentYaw;
+      d = ((d + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI;
+      const tl = 1 - Math.exp(-this.rotationLerpSpeed * dt);
+      this._currentYaw += d * tl;
+    }
+
+    this._targetQuaternion.setFromAxisAngle(new THREE.Vector3(0,1,0), this._currentYaw);
+    this.mesh.quaternion.copy(this._targetQuaternion);
+
+    const feetY = this.body.position.y - this.colliderHeight / 2;
+    this.mesh.position.set(this.body.position.x, feetY, this.body.position.z);
+    this._updateLocomotionAnimation(moveVector, hasInput, dt, sprinting);
+  }
+
+  _updateLocomotionAnimation(moveVector, hasInput, dt, sprinting = false) {
+    const speedMultiplier = (sprinting ? 1.6 : 1) * this._speedMultiplier;
+    this._swingAmount = THREE.MathUtils.lerp(this._swingAmount, hasInput ? 1 : 0, 1 - Math.exp(-8*dt));
+    if (hasInput) this._walkCycleTime += dt * 8 * speedMultiplier;
+    if (this.legs) {
+      const amp = 0.5 * (sprinting ? 1.25 : 1.0);
+      const s = Math.sin(this._walkCycleTime) * amp * this._swingAmount;
+      this.legs[0].rotation.x = s; this.legs[1].rotation.x = -s;
+    }
+    if (this.arms) {
+      const amp = 0.35 * (sprinting ? 1.4 : 1.0);
+      const s = Math.sin(this._walkCycleTime) * amp * this._swingAmount;
+      this.arms[0].rotation.x = -s; this.arms[1].rotation.x = s;
+    }
+    if (this.mixer && this.locomotionActions) {
+      let target = hasInput ? this.locomotionActions.walk : null;
+      if (target !== this._currentAction) {
+        const FADE = 0.2;
+        if (this._currentAction) this._currentAction.fadeOut(FADE);
+        if (target) target.reset().fadeIn(FADE).play();
+        this._currentAction = target;
+      }
+      if (target) target.timeScale = speedMultiplier;
+      this.mixer.update(dt);
+      this.realModel.updateMatrixWorld(true);
+      this._updatePantsRig();
+    }
+  }
+}
+
+const ITEM_LABELS = {
+  stick: "STICK",
+  stone: "STONE",
+  wood: "WOOD",
+  stone_hatchet: "HATCHET",
+  broken_stone: "BROKEN",
+  bark: "BARK",
+};
+
+class InventorySystem {
+  constructor() {
+    this.SLOT_COUNT = 4;
+    this.slots = [];
+    for (let i = 0; i < this.SLOT_COUNT; i++) this.slots.push({ type: null });
+    this.selectedSlot = null;
+    this._slotEls = [];
+    for (let i = 0; i < this.SLOT_COUNT; i++) {
+      const root = document.querySelector(`.inv-slot[data-index="${i}"]`);
+      this._slotEls.push({
+        root,
+        icon: root ? root.querySelector(".inv-icon") : null,
+        label: root ? root.querySelector(".inv-label") : null,
+      });
+    }
+    this._flashTimers = new Array(this.SLOT_COUNT).fill(null);
+    for (let i = 0; i < this.SLOT_COUNT; i++) this._renderSlot(i);
+  }
+
+  getOccupiedSlotCount() {
+    let n = 0;
+    for (const s of this.slots) if (s.type !== null) n++;
+    return n;
+  }
+
+  addItem(type) {
+    for (let i = 0; i < this.SLOT_COUNT; i++) {
+      if (this.slots[i].type === null) {
+        this.slots[i].type = type;
+        this._renderSlot(i);
+        this._flashSlot(i);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  findAndRemove(type) {
+    for (let i = 0; i < this.SLOT_COUNT; i++) {
+      if (this.slots[i].type === type) {
+        this.slots[i].type = null;
+        this._renderSlot(i);
+        if (this.selectedSlot === i) {
+          this.selectedSlot = null;
+          this._updateSelectionVisual();
+        }
+        return type;
+      }
+    }
+    return null;
+  }
+
+  hasEmptySlot() {
+    for (const s of this.slots) if (s.type === null) return true;
+    return false;
+  }
+
+  hasItem(type) {
+    for (const s of this.slots) if (s.type === type) return true;
+    return false;
+  }
+
+  isSelected(type) {
+    if (this.selectedSlot === null) return false;
+    return this.slots[this.selectedSlot].type === type;
+  }
+
+  selectSlot(i) {
+    if (i < 0 || i >= this.SLOT_COUNT) return;
+    this.selectedSlot = this.selectedSlot === i ? null : i;
+    this._updateSelectionVisual();
+  }
+
+  getSlotType(i) {
+    const s = this.slots[i];
+    return s ? s.type : null;
+  }
+
+  removeFromSlot(i) {
+    const s = this.slots[i];
+    if (!s || s.type === null) return null;
+    const t = s.type;
+    s.type = null;
+    this._renderSlot(i);
+    if (this.selectedSlot === i) {
+      this.selectedSlot = null;
+      this._updateSelectionVisual();
+    }
+    return t;
+  }
+
+  getCount(type) {
+    let n = 0;
+    for (const s of this.slots) if (s.type === type) n++;
+    return n;
+  }
+
+  canDropSelected() {
+    if (this.selectedSlot === null) return false;
+    const s = this.slots[this.selectedSlot];
+    return s && s.type !== null;
+  }
+
+  _renderSlot(i) {
+    const s = this.slots[i], els = this._slotEls[i];
+    if (!els || !els.icon) return;
+    if (s.type === null) {
+      els.icon.className = "inv-icon empty";
+      els.label.textContent = "";
+    } else {
+      els.icon.className = "inv-icon " + s.type;
+      els.label.textContent = ITEM_LABELS[s.type] || s.type.toUpperCase();
+    }
+  }
+
+  _updateSelectionVisual() {
+    for (let i = 0; i < this.SLOT_COUNT; i++) {
+      const els = this._slotEls[i];
+      if (els && els.root) els.root.classList.toggle("selected", this.selectedSlot === i);
+    }
+  }
+
+  _flashSlot(i) {
+    const els = this._slotEls[i];
+    if (!els || !els.root) return;
+    els.root.classList.add("flash");
+    if (this._flashTimers[i]) clearTimeout(this._flashTimers[i]);
+    this._flashTimers[i] = setTimeout(() => els.root.classList.remove("flash"), 240);
+  }
+}
+
+class CraftingSystem {
+  constructor(opts) {
+    this.inventory = opts.inventory;
+    this.worldItems = opts.worldItems;
+    this.sceneManager = opts.sceneManager;
+
+    this.active = false;
+    this.phase = "placement";
+    this.resultSuccess = false;
+
+    this.placedStone = null;
+    this.placedStick = null;
+
+    this.poiMarkers = [];
+    this.chosenPOI = null;
+
+    this._pointerDownObj = null;
+    this._pointerDownTime = 0;
+    this._longPressTimer = null;
+    this._longPressFired = false;
+
+    this.mgRound = 1;
+    this.mgMaxRounds = 6;
+    this.mgMarker = 0;
+    this.mgDir = 1;
+    this.mgSpeed = 0.7;
+    this.mgZoneStart = 0.4;
+    this.mgZoneEnd = 0.6;
+    this.mgActive = false;
+
+    this._raycaster = new THREE.Raycaster();
+
+    this._setupScene();
+    this._bindUI();
+  }
+
+  _setupScene() {
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x18181e);
+    this.scene.fog = new THREE.Fog(0x18181e, 6, 14);
+
+    this.camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    this.camera.position.set(0, 3.4, 4.6);
+    this.camera.lookAt(0, 0.2, 0);
+
+    const hemi = new THREE.HemisphereLight(0xffe8c0, 0x303028, 1.1);
+    this.scene.add(hemi);
+
+    const key = new THREE.DirectionalLight(0xffe8c0, 2.2);
+    key.position.set(3, 6, 4);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.camera.left = -3.5;
+    key.shadow.camera.right = 3.5;
+    key.shadow.camera.top = 3.5;
+    key.shadow.camera.bottom = -3.5;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 20;
+    key.shadow.bias = -0.0005;
+    this.scene.add(key);
+    this.scene.add(key.target);
+
+    const rim = new THREE.DirectionalLight(0x8090b0, 0.9);
+    rim.position.set(-4, 2, -3);
+    this.scene.add(rim);
+
+    const discGeo = new THREE.CylinderGeometry(2.5, 2.5, 0.18, 64);
+    const discMat = new THREE.MeshStandardMaterial({ color: 0x4a3a28, roughness: 0.9 });
+    const disc = new THREE.Mesh(discGeo, discMat);
+    disc.position.y = -0.09;
+    disc.receiveShadow = true;
+    this.scene.add(disc);
+
+    const ringGeo = new THREE.TorusGeometry(2.5, 0.04, 12, 80);
+    const ringMat = new THREE.MeshStandardMaterial({
+      color: 0xd0a860, roughness: 0.5, metalness: 0.6,
+      emissive: 0x3a2408, emissiveIntensity: 0.8,
+    });
+    this.ring = new THREE.Mesh(ringGeo, ringMat);
+    this.ring.rotation.x = -Math.PI / 2;
+    this.ring.position.y = 0.005;
+    this.scene.add(this.ring);
+
+    const inner = new THREE.Mesh(
+      new THREE.TorusGeometry(1.4, 0.015, 8, 60),
+      new THREE.MeshStandardMaterial({ color: 0x90b0d0, roughness: 0.4, emissive: 0x203040, emissiveIntensity: 1.0 })
+    );
+    inner.rotation.x = -Math.PI / 2;
+    inner.position.y = 0.01;
+    this.scene.add(inner);
+
+    this.itemsGroup = new THREE.Group();
+    this.scene.add(this.itemsGroup);
+  }
+
+  _bindUI() {
+    this._screenEl  = document.getElementById("crafting-screen");
+    this._hintEl    = document.getElementById("crafting-hint");
+    this._titleEl   = document.getElementById("crafting-title");
+    this._actionBtn = document.getElementById("crafting-action-btn");
+    this._closeBtn  = document.getElementById("crafting-close");
+    this._mgEl      = document.getElementById("crafting-minigame");
+    this._mgRoundEl = document.getElementById("minigame-round");
+    this._mgZoneEl  = document.getElementById("minigame-zone");
+    this._mgMarkerEl= document.getElementById("minigame-marker");
+    this._mgStrikeBtn = document.getElementById("minigame-strike");
+    this._resultEl  = document.getElementById("crafting-result");
+    this._uiRoot    = document.getElementById("ui-root");
+    this._openBtn   = document.getElementById("craft-open-btn");
+
+    this._openBtn.addEventListener("click", (e) => { e.preventDefault(); this.open(); });
+    this._closeBtn.addEventListener("click", (e) => { e.preventDefault(); this.close(); });
+    this._actionBtn.addEventListener("click", (e) => { e.preventDefault(); this._onActionClick(); });
+    this._mgStrikeBtn.addEventListener("click", (e) => { e.preventDefault(); this._onStrike(); });
+
+    const canvas = this.sceneManager.renderer.domElement;
+    canvas.addEventListener("pointerdown", (e) => this._onCanvasDown(e));
+    canvas.addEventListener("pointerup", (e) => this._onCanvasUp(e));
+    canvas.addEventListener("pointercancel", () => this._cancelPress());
+    canvas.addEventListener("contextmenu", (e) => { if (this.active) e.preventDefault(); });
+  }
+
+  open() {
+    if (this.active) return;
+    this.active = true;
+    this._resetState();
+    this._screenEl.classList.add("active");
+    this._uiRoot.classList.add("crafting-active");
+    this._updateUI();
+  }
+
+  close() {
+    this.active = false;
+    this.mgActive = false;
+    this._clearLongPressTimer();
+    this._screenEl.classList.remove("active");
+    this._uiRoot.classList.remove("crafting-active");
+    this._clear3DItems();
+  }
+
+  _resetState() {
+    this.phase = "placement";
+    this.resultSuccess = false;
+    this.placedStone = null;
+    this.placedStick = null;
+    this.chosenPOI = null;
+    this.mgActive = false;
+    this.mgRound = 1;
+    this._clear3DItems();
+    this._setCameraDefault();
+  }
+
+  _clear3DItems() {
+    while (this.itemsGroup.children.length > 0) {
+      const c = this.itemsGroup.children[0];
+      this.itemsGroup.remove(c);
+    }
+    this.poiMarkers = [];
+  }
+
+  _setCameraDefault() {
+    this.camera.position.set(0, 3.4, 4.6);
+    this.camera.lookAt(0, 0.2, 0);
+    this.camera.fov = 45;
+    this.camera.updateProjectionMatrix();
+  }
+
+  _setCameraCloseup() {
+    this.camera.position.set(0, 1.0, 1.5);
+    this.camera.lookAt(0, 0.2, 0);
+    this.camera.fov = 42;
+    this.camera.updateProjectionMatrix();
+  }
+
+  _onActionClick() {
+    if (this.phase === "placement") {
+      if (!this.placedStone && this.inventory.getCount("stone") > 0) {
+        this._placeStone();
+      } else if (!this.placedStick && this.inventory.getCount("stick") > 0) {
+        this._placeStick();
+      } else if (this.placedStone && this.placedStick) {
+        this.phase = "adjust";
+        this._updateUI();
+      }
+      this._updateUI();
+    } else if (this.phase === "adjust") {
+      this.phase = "poi";
+      this._beginPOI();
+      this._updateUI();
+    } else if (this.phase === "poi") {
+      if (this.chosenPOI) {
+        this.phase = "minigame";
+        this._beginMinigame();
+        this._updateUI();
+      }
+    } else if (this.phase === "result") {
+      this._resetState();
+      this._updateUI();
+    }
+  }
+
+  _placeStone() {
+    const type = this.inventory.findAndRemove("stone");
+    if (!type) return;
+    const shape = STONE_SHAPES[Math.floor(Math.random() * STONE_SHAPES.length)];
+    const geo = makeStoneGeometry(shape);
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0x909088, roughness: 0.95,
+      flatShading: shape === "jagged",
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const group = new THREE.Group();
+    group.position.set(-0.75, 0.19, 0);
+    group.add(mesh);
+    group.userData.interactive = true;
+    group.userData.kind = "stone";
+
+    this.itemsGroup.add(group);
+    this.placedStone = { group, mesh, shape, rotY: 0, flipY: 0 };
+  }
+
+  _placeStick() {
+    const type = this.inventory.findAndRemove("stick");
+    if (!type) return;
+    const geo = new THREE.CylinderGeometry(0.035, 0.04, 0.7, 8);
+    geo.rotateZ(Math.PI / 2);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x9c6b3a, roughness: 0.85 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+
+    const group = new THREE.Group();
+    group.position.set(0.75, 0.06, 0);
+    group.add(mesh);
+    group.userData.interactive = true;
+    group.userData.kind = "stick";
+
+    this.itemsGroup.add(group);
+    this.placedStick = { group, mesh, rotY: 0, flipX: 0 };
+  }
+
+  _beginPOI() {
+    this._setCameraCloseup();
+
+    const stoneGroup = this.placedStone.group;
+    const stoneMesh = this.placedStone.mesh;
+
+    stoneGroup.position.set(0, 0.19, 0);
+    stoneGroup.rotation.y = 0;
+
+    const markerMat = new THREE.MeshBasicMaterial({
+      color: 0x66ff88, transparent: true, opacity: 1.0, depthTest: false,
+    });
+    const markerGeo = new THREE.SphereGeometry(0.045, 10, 8);
+
+    const originWorld = new THREE.Vector3();
+    stoneGroup.getWorldPosition(originWorld);
+    const cameraDir = new THREE.Vector3()
+      .subVectors(this.camera.position, originWorld).normalize();
+
+    const count = 6;
+    for (let i = 0; i < count * 6 && this.poiMarkers.length < count; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi   = Math.random() * Math.PI * 0.6;
+      const nx = Math.cos(theta) * Math.sin(phi);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(theta) * Math.sin(phi);
+
+      const dir = new THREE.Vector3(nx, ny, nz).addScaledVector(cameraDir, 0.9).normalize();
+
+      const ray = new THREE.Raycaster(originWorld, dir, 0.05, 1.0);
+      const hits = ray.intersectObject(stoneMesh, false);
+      if (hits.length === 0) continue;
+
+      const point = hits[0].point.clone();
+      const normal = hits[0].face
+        ? hits[0].face.normal.clone().transformDirection(stoneMesh.matrixWorld).normalize()
+        : dir.clone();
+      point.addScaledVector(normal, 0.02);
+
+      let dupe = false;
+      for (const m of this.poiMarkers) if (m.point.distanceTo(point) < 0.09) { dupe = true; break; }
+      if (dupe) continue;
+
+      const marker = new THREE.Mesh(markerGeo, markerMat.clone());
+      marker.position.copy(point);
+      marker.userData.interactive = true;
+      marker.userData.kind = "poi";
+      marker.userData.pulsePhase = Math.random() * Math.PI * 2;
+      this.itemsGroup.add(marker);
+      this.poiMarkers.push({ mesh: marker, point });
+    }
+
+    if (this.poiMarkers.length === 0) {
+      const ray = new THREE.Raycaster(originWorld, cameraDir.clone().negate(), 0.05, 1.0);
+      const hits = ray.intersectObject(stoneMesh, false);
+      const point = hits.length > 0
+        ? hits[0].point.clone()
+        : originWorld.clone().addScaledVector(cameraDir, -0.25);
+      const marker = new THREE.Mesh(markerGeo, markerMat.clone());
+      marker.position.copy(point);
+      marker.userData.interactive = true;
+      marker.userData.kind = "poi";
+      this.itemsGroup.add(marker);
+      this.poiMarkers.push({ mesh: marker, point });
+    }
+  }
+
+  _selectPOI(marker) {
+    for (const m of this.poiMarkers) m.mesh.material.color.setHex(0x66ff88);
+    marker.mesh.material.color.setHex(0xffe680);
+    this.chosenPOI = marker;
+    this._updateUI();
+  }
+
+  _beginMinigame() {
+    this.mgRound = 1;
+    this.mgMaxRounds = 6;
+    this._setupRound(this.mgRound);
+    this._mgEl.classList.add("active");
+  }
+
+  _setupRound(round) {
+    const t = (round - 1) / Math.max(1, this.mgMaxRounds - 1);
+    const zoneWidth = 0.38 - t * 0.20;
+    const speed = 0.7 + t * 0.5;
+    const zoneStart = 0.08 + Math.random() * (0.84 - zoneWidth);
+    this.mgZoneStart = zoneStart;
+    this.mgZoneEnd = zoneStart + zoneWidth;
+    this.mgSpeed = speed;
+    this.mgMarker = 0;
+    this.mgDir = 1;
+    this.mgActive = true;
+
+    this._mgZoneEl.style.left = (this.mgZoneStart * 100) + "%";
+    this._mgZoneEl.style.width = ((this.mgZoneEnd - this.mgZoneStart) * 100) + "%";
+    this._mgZoneEl.style.background = "";
+    this._mgMarkerEl.style.left = "0%";
+    if (this._mgRoundEl) this._mgRoundEl.textContent = `ROUND ${round} / ${this.mgMaxRounds}`;
+  }
+
+  _onStrike() {
+    if (!this.mgActive) return;
+    this.mgActive = false;
+
+    const hit = this.mgMarker >= this.mgZoneStart && this.mgMarker <= this.mgZoneEnd;
+
+    if (!hit) {
+      this.resultSuccess = false;
+      this.phase = "result";
+      this._mgEl.classList.remove("active");
+      this._animateFailure();
+      this._updateUI();
+      return;
+    }
+
+    this.mgRound += 1;
+
+    if (this.mgRound > this.mgMaxRounds) {
+      this.resultSuccess = true;
+      this.phase = "result";
+      this._mgEl.classList.remove("active");
+      this._animateSuccess();
+      this.inventory.addItem("stone_hatchet");
+      this._updateUI();
+      return;
+    }
+
+    this._mgZoneEl.style.background = "rgba(180,255,180,0.95)";
+    const nextRound = this.mgRound;
+    setTimeout(() => {
+      if (this.phase === "minigame" && this.active) this._setupRound(nextRound);
+    }, 250);
+  }
+
+  _animateSuccess() {
+    const toolGeo = new THREE.BoxGeometry(0.22, 0.08, 0.10);
+    const toolMat = new THREE.MeshStandardMaterial({ color: 0x9a928a, roughness: 0.9 });
+    const head = new THREE.Mesh(toolGeo, toolMat);
+    const stickGeo = new THREE.CylinderGeometry(0.03, 0.035, 0.55, 6);
+    stickGeo.rotateZ(Math.PI / 2);
+    const stickMat = new THREE.MeshStandardMaterial({ color: 0x9c6b3a, roughness: 0.85 });
+    const handle = new THREE.Mesh(stickGeo, stickMat);
+
+    const toolGroup = new THREE.Group();
+    toolGroup.position.set(0, 0.15, 0);
+    head.position.set(-0.18, 0.06, 0);
+    head.rotation.z = 0.15;
+    handle.position.set(0.05, 0, 0);
+    toolGroup.add(head); toolGroup.add(handle);
+
+    this._clear3DItems();
+    this.itemsGroup.add(toolGroup);
+    toolGroup.rotation.y = -Math.PI * 0.4;
+    this._resultToolGroup = toolGroup;
+    this._setCameraDefault();
+  }
+
+  _animateFailure() {
+    const center = new THREE.Vector3(-0.75, 0.19, 0);
+    const shardMat = new THREE.MeshStandardMaterial({ color: 0x8a8780, roughness: 0.95 });
+    this._shards = [];
+    for (let i = 0; i < 10; i++) {
+      const g = new THREE.DodecahedronGeometry(0.03 + Math.random() * 0.02, 0);
+      const m = new THREE.Mesh(g, shardMat);
+      m.position.copy(center);
+      m.castShadow = true;
+      const dir = new THREE.Vector3(
+        Math.random() - 0.5, 0.4 + Math.random() * 0.6, Math.random() - 0.5
+      ).normalize();
+      m.userData.vel = dir.multiplyScalar(1.5 + Math.random() * 1.5);
+      this.itemsGroup.add(m);
+      this._shards.push(m);
+    }
+    if (this.placedStick) { this.itemsGroup.remove(this.placedStick.group); this.placedStick = null; }
+    if (this.placedStone) { this.itemsGroup.remove(this.placedStone.group); this.placedStone = null; }
+    for (const m of this.poiMarkers) this.itemsGroup.remove(m.mesh);
+    this.poiMarkers = [];
+
+    this.inventory.addItem("broken_stone");
+    this._setCameraDefault();
+  }
+
+  _onCanvasDown(e) {
+    if (!this.active) return;
+    if (this.phase !== "adjust" && this.phase !== "poi") return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const tapX = e.clientX - rect.left;
+    const tapY = e.clientY - rect.top;
+
+    if (this.phase === "poi") {
+      const W = rect.width, H = rect.height;
+      const HIT_RADIUS = Math.max(50, Math.min(W, H) * 0.10);
+      const wp = new THREE.Vector3();
+      let best = null, bestDist = HIT_RADIUS;
+      for (const m of this.poiMarkers) {
+        m.mesh.getWorldPosition(wp);
+        wp.project(this.camera);
+        if (wp.z > 1) continue;
+        const sx = (wp.x * 0.5 + 0.5) * W;
+        const sy = (-wp.y * 0.5 + 0.5) * H;
+        const d = Math.hypot(sx - tapX, sy - tapY);
+        if (d < bestDist) { bestDist = d; best = m; }
+      }
+      if (best) this._selectPOI(best);
+      return;
+    }
+
+    const nx = (tapX / rect.width) * 2 - 1;
+    const ny = -(tapY / rect.height) * 2 + 1;
+    this._raycaster.setFromCamera({ x: nx, y: ny }, this.camera);
+
+    const targets = [];
+    if (this.placedStone) targets.push(this.placedStone.mesh);
+    if (this.placedStick) targets.push(this.placedStick.mesh);
+
+    const hits = this._raycaster.intersectObjects(targets, true);
+    let interactive = null;
+    if (hits.length > 0) {
+      let cur = hits[0].object;
+      while (cur && !cur.userData.interactive) cur = cur.parent;
+      interactive = cur;
+    }
+
+    this._pointerDownObj = interactive;
+    this._pointerDownTime = performance.now();
+    this._longPressFired = false;
+
+    this._clearLongPressTimer();
+    if (interactive) {
+      this._longPressTimer = setTimeout(() => {
+        this._longPressFired = true;
+        this._onLongPress(interactive);
+      }, 500);
+    }
+  }
+
+  _onCanvasUp(e) {
+    if (!this.active) return;
+    const wasLong = this._longPressFired;
+    this._clearLongPressTimer();
+    if (this._pointerDownObj && !wasLong) {
+      const dur = performance.now() - this._pointerDownTime;
+      if (dur < 500) this._onTap(this._pointerDownObj);
+    }
+    this._pointerDownObj = null;
+    this._longPressFired = false;
+  }
+
+  _cancelPress() {
+    this._clearLongPressTimer();
+    this._pointerDownObj = null;
+    this._longPressFired = false;
+  }
+
+  _clearLongPressTimer() {
+    if (this._longPressTimer) {
+      clearTimeout(this._longPressTimer);
+      this._longPressTimer = null;
+    }
+  }
+
+  _onTap(obj) {
+    if (this.phase === "poi") {
+      const marker = this.poiMarkers.find((m) => m.mesh === obj);
+      if (marker) this._selectPOI(marker);
+      return;
+    }
+    if (this.phase !== "adjust") return;
+    const kind = obj.userData.kind;
+    if (kind === "stone" && this.placedStone) {
+      this.placedStone.rotY += Math.PI / 6;
+      this.placedStone.group.rotation.y = this.placedStone.rotY;
+    } else if (kind === "stick" && this.placedStick) {
+      this.placedStick.rotY += Math.PI / 6;
+      this.placedStick.group.rotation.y = this.placedStick.rotY;
+    }
+  }
+
+  _onLongPress(obj) {
+    if (this.phase !== "adjust") return;
+    const kind = obj.userData.kind;
+    if (kind === "stone" && this.placedStone) {
+      this.placedStone.flipY += Math.PI;
+      this.placedStone.mesh.rotation.x = this.placedStone.flipY;
+    } else if (kind === "stick" && this.placedStick) {
+      this.placedStick.flipX += Math.PI;
+      this.placedStick.mesh.rotation.z = this.placedStick.flipX;
+    }
+  }
+
+  _updateUI() {
+    const el = this._actionBtn;
+    const hint = this._hintEl;
+    el.classList.remove("hidden");
+    el.classList.remove("disabled");
+    this._resultEl.className = "hidden";
+    this._resultEl.textContent = "";
+
+    if (this.phase === "placement") {
+      const hasStone = this.inventory.getCount("stone") > 0;
+      const hasStick = this.inventory.getCount("stick") > 0;
+      if (!this.placedStone && hasStone) {
+        el.textContent = "PLACE STONE";
+        hint.textContent = "Place a stone on the crafting circle.";
+      } else if (!this.placedStick && hasStick) {
+        el.textContent = "PLACE STICK";
+        hint.textContent = "Now place a stick next to the stone.";
+      } else if (this.placedStone && this.placedStick) {
+        el.textContent = "CONTINUE";
+        hint.textContent = "Both items placed. Tap CONTINUE to adjust them.";
+      } else {
+        el.classList.add("disabled");
+        el.textContent = this.placedStone ? "NEED A STICK" : "NEED A STONE";
+        hint.textContent = this.placedStone
+          ? "You need a stick in your inventory. Gather one from the world."
+          : "You need a stone in your inventory. Gather one from the world.";
+      }
+    } else if (this.phase === "adjust") {
+      el.textContent = "CONTINUE TO DRILL";
+      hint.textContent = "TAP the stone or stick to rotate it. HOLD on it to flip it over.";
+    } else if (this.phase === "poi") {
+      if (this.chosenPOI) {
+        el.textContent = "START DRILLING";
+        hint.textContent = "Point selected. Tap START DRILLING when ready.";
+      } else {
+        el.classList.add("disabled");
+        el.textContent = "SELECT A POINT";
+        hint.textContent = "Tap one of the glowing points on the stone where you'll drill the hole.";
+      }
+    } else if (this.phase === "minigame") {
+      el.classList.add("hidden");
+      hint.textContent = "6 ROUNDS — tap STRIKE when the marker is inside the green zone.";
+    } else if (this.phase === "result") {
+      if (this.resultSuccess) {
+        this._resultEl.className = "success";
+        this._resultEl.innerHTML = `<div class="res-title">CRAFTED!</div>
+          <div class="res-sub">A stone hatchet was added to your inventory.</div>`;
+        el.textContent = "DONE";
+        hint.textContent = "";
+      } else {
+        this._resultEl.className = "fail";
+        this._resultEl.innerHTML = `<div class="res-title">SHATTERED</div>
+          <div class="res-sub">The stone broke. A broken stone was added to your inventory.</div>`;
+        el.textContent = "TRY AGAIN";
+        hint.textContent = "";
+      }
+    }
+  }
+
+  update(dt) {
+    if (!this.active) return;
+    if (this.ring) this.ring.rotation.z += dt * 0.25;
+
+    if (this.poiMarkers && this.poiMarkers.length > 0) {
+      const t = performance.now() * 0.004;
+      for (let i = 0; i < this.poiMarkers.length; i++) {
+        const m = this.poiMarkers[i];
+        const phase = m.mesh.userData.pulsePhase || (i * 1.7);
+        const s = 1.0 + Math.sin(t + phase) * 0.25;
+        m.mesh.scale.setScalar(s);
+        if (m.mesh.material) m.mesh.material.opacity = 0.85 + Math.sin(t + phase) * 0.15;
+      }
+    }
+
+    if (this._shards) {
+      let alive = false;
+      for (const m of this._shards) {
+        if (!m.userData.vel) continue;
+        alive = true;
+        m.userData.vel.y -= 4 * dt;
+        m.position.addScaledVector(m.userData.vel, dt);
+        m.rotation.x += dt * 4;
+        m.rotation.y += dt * 3;
+        if (m.position.y < 0.02) { m.position.y = 0.02; m.userData.vel.set(0, 0, 0); }
+      }
+      if (!alive) this._shards = null;
+    }
+
+    if (this._resultToolGroup) this._resultToolGroup.rotation.y += dt * 0.6;
+
+    if (this.mgActive) {
+      this.mgMarker += this.mgDir * this.mgSpeed * dt;
+      if (this.mgMarker >= 1) { this.mgMarker = 1; this.mgDir = -1; }
+      if (this.mgMarker <= 0) { this.mgMarker = 0; this.mgDir = 1; }
+      this._mgMarkerEl.style.left = `calc(${this.mgMarker * 100}% - 3px)`;
+    }
+
+    if (this.camera.aspect !== window.innerWidth / window.innerHeight) {
+      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  render(renderer) { renderer.render(this.scene, this.camera); }
+}
+
+class InteractionSystem {
+  constructor(character) { this.character = character; this.interactables = []; }
+  registerInteractable(o) { this.interactables.push(o); }
+  update() {}
+}
+
+/* ====================================================================
+   CAMERA RIG
+   ------------------------------------------------------------------
+   TOUCH FIX: the previous version listened on `window` for touchmove
+   and checked `e.touches.length === 2` to enter pinch-zoom. But
+   `e.touches` contains ALL touches on the page, including the one
+   on the virtual joystick. So while walking (one thumb on the
+   joystick) and dragging to rotate (other thumb on the canvas), the
+   code saw 2 touches and triggered a pinch — zooming instead of
+   rotating.
+
+   Fix: track which touch identifiers STARTED on the canvas. Only
+   those count toward rotation and pinch. Touches that began on the
+   joystick or jump button are ignored by the camera.
+==================================================================== */
+class CameraRig {
+  constructor(camera, target, domElement) {
+    this.camera = camera; this.target = target; this.domElement = domElement;
+    this.distance = 7; this.minDistance = 2.5; this.maxDistance = 16;
+    this.yaw = 0; this.pitch = 0.35;
+    this.minPitch = 0.1; this.maxPitch = 1.3;
+    this.lookOffset = new THREE.Vector3(0, 1.2, 0);
+    this._dragging = false; this._lastX = 0; this._lastY = 0;
+    this._bindEvents();
+  }
+
+  _bindEvents() {
+    // ---- Mouse ----
+    this.domElement.addEventListener("mousedown", (e) => {
+      this._dragging = true;
+      this._lastX = e.clientX; this._lastY = e.clientY;
+    });
+    window.addEventListener("mouseup", () => { this._dragging = false; });
+    window.addEventListener("mousemove", (e) => {
+      if (!this._dragging) return;
+      const dx = e.clientX - this._lastX, dy = e.clientY - this._lastY;
+      this._lastX = e.clientX; this._lastY = e.clientY;
+      const S = 0.006;
+      this.yaw -= dx * S;
+      this.pitch = THREE.MathUtils.clamp(this.pitch - dy * S, this.minPitch, this.maxPitch);
+    });
+    this.domElement.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const S = 0.01;
+      this.distance = THREE.MathUtils.clamp(this.distance + e.deltaY * S, this.minDistance, this.maxDistance);
+    }, { passive: false });
+
+    // ---- Touch ----
+    const ROTATE_SPEED = 0.006;
+    const td = (a, b) => Math.sqrt((a.clientX - b.clientX)**2 + (a.clientY - b.clientY)**2);
+
+    // Identifiers of touches that started ON THE CANVAS. Only these
+    // participate in camera rotation and pinch-zoom. Touches on the
+    // joystick / jump button / inventory are ignored.
+    const canvasTouchIds = new Set();
+
+    let rotateTouchId = null;
+    let pinchStartDist = null;
+    let pinchStartDistance = null;
+
+    const getCanvasTouches = (list) => {
+      const out = [];
+      for (const t of list) if (canvasTouchIds.has(t.identifier)) out.push(t);
+      return out;
+    };
+
+    // touchstart is bound to the CANVAS, so its changedTouches are
+    // exactly the touches that began on the canvas — no filtering
+    // needed there. But we still add them to the tracked set so
+    // touchmove (on window) can distinguish ours from the joystick's.
+    this.domElement.addEventListener("touchstart", (e) => {
+      for (const t of e.changedTouches) canvasTouchIds.add(t.identifier);
+
+      const canvasTouches = getCanvasTouches(e.touches);
+
+      if (canvasTouches.length === 1) {
+        // Single canvas touch: start rotating.
+        rotateTouchId = canvasTouches[0].identifier;
+        this._lastX = canvasTouches[0].clientX;
+        this._lastY = canvasTouches[0].clientY;
+        pinchStartDist = null;
+      } else if (canvasTouches.length === 2) {
+        // A second canvas finger landed mid-drag: switch to pinch.
+        rotateTouchId = null;
+        pinchStartDist = td(canvasTouches[0], canvasTouches[1]);
+        pinchStartDistance = this.distance;
+      }
+      // If canvasTouches.length > 2, ignore (three-finger gestures
+      // are not part of the spec; they'll just do nothing).
+      e.preventDefault();
+    }, { passive: false });
+
+    // touchmove is bound to WINDOW so drags still work if the finger
+    // slides off the canvas. But we filter by canvasTouchIds to ignore
+    // joystick / button touches.
+    window.addEventListener("touchmove", (e) => {
+      const canvasTouches = getCanvasTouches(e.touches);
+
+      // Two canvas touches → pinch-zoom.
+      if (canvasTouches.length === 2 && pinchStartDist !== null) {
+        const d = td(canvasTouches[0], canvasTouches[1]);
+        const r = pinchStartDist / d;
+        this.distance = THREE.MathUtils.clamp(pinchStartDistance * r, this.minDistance, this.maxDistance);
+        e.preventDefault();
+        return;
+      }
+
+      // One canvas touch and no pinch → rotate.
+      if (rotateTouchId === null) return;
+      if (!canvasTouchIds.has(rotateTouchId)) return;
+      for (const t of e.changedTouches) {
+        if (t.identifier !== rotateTouchId) continue;
+        if (!canvasTouchIds.has(t.identifier)) continue;
+        const dx = t.clientX - this._lastX, dy = t.clientY - this._lastY;
+        this._lastX = t.clientX; this._lastY = t.clientY;
+        this.yaw -= dx * ROTATE_SPEED;
+        this.pitch = THREE.MathUtils.clamp(this.pitch - dy * ROTATE_SPEED, this.minPitch, this.maxPitch);
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    const endT = (e) => {
+      for (const t of e.changedTouches) {
+        canvasTouchIds.delete(t.identifier);
+        if (t.identifier === rotateTouchId) rotateTouchId = null;
+      }
+
+      // Re-evaluate state: if we just lifted one finger but still
+      // have exactly one canvas touch down, resume rotating with it.
+      const remaining = [];
+      for (const t of e.touches) if (canvasTouchIds.has(t.identifier)) remaining.push(t);
+
+      if (remaining.length === 1) {
+        rotateTouchId = remaining[0].identifier;
+        this._lastX = remaining[0].clientX;
+        this._lastY = remaining[0].clientY;
+      } else if (remaining.length === 0) {
+        rotateTouchId = null;
+      }
+
+      if (remaining.length < 2) {
+        pinchStartDist = null;
+        pinchStartDistance = null;
+      }
+    };
+    window.addEventListener("touchend", endT);
+    window.addEventListener("touchcancel", endT);
+  }
+
+  getForward() { return new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
+
+  update(dt) {
+    const forward = this.getForward();
+    const hd = this.distance * Math.cos(this.pitch);
+    const h = this.distance * Math.sin(this.pitch);
+    const lookAt = this.target.mesh.position.clone().add(this.lookOffset);
+    const desired = lookAt.clone().addScaledVector(forward, -hd);
+    desired.y += h;
+    this.camera.position.lerp(desired, 1 - Math.exp(-10 * dt));
+    this.camera.lookAt(lookAt);
+  }
+}
+
+class Game {
+  constructor() {
+    this.sceneManager = new SceneManager();
+    this.physicsManager = new PhysicsManager();
+    this.inputManager = new InputManager();
+
+    const hud = document.getElementById("debug-hud");
+    const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
+    hud.textContent = isTouch
+      ? "Joystick · 2-tap centre = SPRINT · JUMP · drag to look"
+      : "WASD · Shift sprint · Space jump · drag rotate · scroll zoom";
+
+    this.character = new Character(this.sceneManager, this.physicsManager);
+
+    this.treeSystem = new TreeSystem(this.sceneManager.scene, this.physicsManager, {
+      count: 380, spawnRadius: 14, minSpacing: 3.2, extent: 90,
+    });
+
+    this.worldItems = new WorldItems(this.sceneManager.scene);
+    this.worldItems.scatter(this.treeSystem.getPlacements(), {
+      stickCount: 35, stoneCount: 30,
+      minRadius: 6, maxRadius: 55,
+      treeClearance: 2.0, itemSpacing: 1.5,
+    });
+
+    this.inventorySystem = new InventorySystem();
+    this.interactionSystem = new InteractionSystem(this.character);
+
+    this.craftingSystem = new CraftingSystem({
+      inventory: this.inventorySystem,
+      worldItems: this.worldItems,
+      sceneManager: this.sceneManager,
+    });
+
+    const canvas = document.getElementById("game-canvas");
+    this.cameraRig = new CameraRig(this.sceneManager.camera, this.character, canvas);
+
+    this._pickupBtn = document.getElementById("pickup-prompt");
+    this._dropBtn   = document.getElementById("drop-button");
+    this._stripBtn  = document.getElementById("strip-button");
+    this._stripFill = document.getElementById("strip-fill");
+    this._stripText = document.getElementById("strip-text");
+    this._stripBadge= document.getElementById("strip-badge");
+    this._weightEl  = document.getElementById("weight-indicator");
+    this._lastNearbyItem = null;
+
+    this.nearbyTree = null;
+    this.stripTarget = null;
+    this.stripProgress = 0;
+    this.stripDuration = 0;
+    this.TREE_INTERACT_RADIUS = 2.6;
+    this.TREE_CANCEL_RADIUS   = 3.2;
+    this.BARK_HAND_TIME       = 3.0;
+    this.BARK_HATCHET_TIME    = 0.8;
+
+    this._bindUI();
+
+    this._clock = new THREE.Clock();
+    this._loop = this._loop.bind(this);
+  }
+
+  _bindUI() {
+    for (let i = 0; i < this.inventorySystem.SLOT_COUNT; i++) {
+      const el = document.querySelector(`.inv-slot[data-index="${i}"]`);
+      if (!el) continue;
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        this.inventorySystem.selectSlot(i);
+      });
+    }
+
+    this._pickupBtn.addEventListener("click", (e) => { e.preventDefault(); this._onPickupClick(); });
+    this._dropBtn.addEventListener("click", (e) => { e.preventDefault(); this._onDropClick(); });
+    this._stripBtn.addEventListener("click", (e) => { e.preventDefault(); this._onStripClick(); });
+  }
+
+  _onPickupClick() {
+    const it = this.worldItems.nearbyItem;
+    if (!it) return;
+    if (this.inventorySystem.addItem(it.type)) {
+      this.worldItems.consumeNearby();
+    }
+  }
+
+  _onDropClick() {
+    if (!this.inventorySystem.canDropSelected()) return;
+    const idx = this.inventorySystem.selectedSlot;
+    const type = this.inventorySystem.removeFromSlot(idx);
+    if (!type) return;
+    const fwd = this.character.getForwardXZ();
+    const px = this.character.body.position.x + fwd.x * 2.5;
+    const pz = this.character.body.position.z + fwd.z * 2.5;
+    this.worldItems.spawn(type, px, pz);
+  }
+
+  _onStripClick() {
+    if (this.stripTarget) {
+      this._cancelStrip();
+      return;
+    }
+    if (!this.nearbyTree) return;
+    if (this.nearbyTree.barkStripped) return;
+    if (!this.inventorySystem.hasEmptySlot()) return;
+
+    this.stripTarget = this.nearbyTree;
+    this.stripProgress = 0;
+    const hasHatchet = this.inventorySystem.hasItem("stone_hatchet");
+    this.stripDuration = hasHatchet ? this.BARK_HATCHET_TIME : this.BARK_HAND_TIME;
+  }
+
+  _cancelStrip() {
+    this.stripTarget = null;
+    this.stripProgress = 0;
+    this.stripDuration = 0;
+  }
+
+  _updateStripping(dt) {
+    if (!this.stripTarget) return;
+
+    const p = this.character.body.position;
+    const dx = this.stripTarget.x - p.x;
+    const dz = this.stripTarget.z - p.z;
+    const d2 = dx*dx + dz*dz;
+
+    if (d2 > this.TREE_CANCEL_RADIUS * this.TREE_CANCEL_RADIUS) {
+      this._cancelStrip();
+      return;
+    }
+
+    this.stripProgress += dt;
+    if (this.stripProgress >= this.stripDuration) {
+      this.inventorySystem.addItem("bark");
+      this.treeSystem.markBarkStripped(this.stripTarget);
+      this._cancelStrip();
+    }
+  }
+
+  _updateActionButtons() {
+    const nearby = this.worldItems.nearbyItem;
+    if (nearby !== this._lastNearbyItem) {
+      this._lastNearbyItem = nearby;
+      if (nearby) {
+        const label = ITEM_LABELS[nearby.type] || nearby.type.toUpperCase();
+        this._pickupBtn.textContent = "PICK UP " + label;
+        this._pickupBtn.classList.remove("hidden");
+      } else {
+        this._pickupBtn.classList.add("hidden");
+      }
+    }
+    this._dropBtn.classList.toggle("disabled", !this.inventorySystem.canDropSelected());
+
+    let stripState;
+    if (this.stripTarget) stripState = "stripping";
+    else if (this.nearbyTree && this.nearbyTree.barkStripped) stripState = "stripped";
+    else if (this.nearbyTree) stripState = "ready";
+    else stripState = "hidden";
+
+    this._stripBtn.classList.toggle("hidden", stripState === "hidden");
+    this._stripBtn.classList.toggle("disabled", stripState === "stripped");
+    this._stripFill.style.width = "0%";
+    this._stripBadge.textContent = "";
+
+    switch (stripState) {
+      case "stripping": {
+        const pct = Math.min(100, (this.stripProgress / this.stripDuration) * 100);
+        this._stripFill.style.width = pct + "%";
+        this._stripText.textContent = "STRIPPING…";
+        break;
+      }
+      case "stripped": {
+        this._stripText.textContent = "ALREADY STRIPPED";
+        break;
+      }
+      case "ready": {
+        this._stripText.textContent = "STRIP BARK";
+        this._stripBadge.textContent =
+          this.inventorySystem.hasItem("stone_hatchet") ? "⚒ FAST" : "";
+        break;
+      }
+      default: {
+        this._stripText.textContent = "STRIP BARK";
+        break;
+      }
+    }
+
+    const count = this.inventorySystem.getOccupiedSlotCount();
+    const pct = Math.round(WEIGHT_SPEED_MULTIPLIER[count] * 100);
+    this._weightEl.textContent = `LOAD ${count}/4 · SPEED ${pct}%`;
+    this._weightEl.classList.toggle("heavy", count >= 2 && count < 4);
+    this._weightEl.classList.toggle("overloaded", count >= 4);
+  }
+
+  start() { this._loop(); }
+
+  _loop() {
+    requestAnimationFrame(this._loop);
+    const dt = Math.min(this._clock.getDelta(), 1 / 30);
+
+    if (this.craftingSystem.active) {
+      this.craftingSystem.update(dt);
+      this.craftingSystem.render(this.sceneManager.renderer);
+      return;
+    }
+
+    this.physicsManager.step(dt);
+
+    const occupied = this.inventorySystem.getOccupiedSlotCount();
+    const speedMultiplier = WEIGHT_SPEED_MULTIPLIER[occupied] ?? 1.0;
+
+    const moveVector = this.inputManager.getMoveVector();
+    if (this.inputManager.consumeJump()) this.character.jump();
+    this.character.update(
+      moveVector,
+      this.sceneManager.camera,
+      dt,
+      this.inputManager.isSprinting(),
+      speedMultiplier
+    );
+
+    this.worldItems.update(this.character.body.position);
+    this.nearbyTree = this.treeSystem.getNearestTree(
+      this.character.body.position.x,
+      this.character.body.position.z,
+      this.TREE_INTERACT_RADIUS
+    );
+
+    this._updateStripping(dt);
+    this._updateActionButtons();
+
+    this.interactionSystem.update(this.inputManager);
+    this.cameraRig.update(dt);
+
+    this.sceneManager.render();
+  }
+}
+
+const game = new Game();
+game.start();
+</script>
+</body>
+</html>
